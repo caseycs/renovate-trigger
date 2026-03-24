@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "renovate-trigger.fullname" . }}
+  namespace: {{ .Values.rbac.jobNamespace }}
+  labels:
+    {{- include "renovate-trigger.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create"]

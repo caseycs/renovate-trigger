@@ -1,0 +1,10 @@
+listenAddr: ":8080"
+logLevel: "info"
+webhookSecret: ""  # set via RT_WEBHOOKSECRET env var
+batchWindowSeconds: 30
+cronjob:
+  name: "renovate"
+  namespace: "renovate"
+repos:
+  - "org/repo-a"
+  - "org/repo-b"

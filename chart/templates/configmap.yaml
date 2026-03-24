@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "renovate-trigger.fullname" . }}
+  labels:
+    {{- include "renovate-trigger.labels" . | nindent 4 }}
+data:
+  renovate-trigger.yaml: |
+    listenAddr: {{ .Values.config.listenAddr | quote }}
+    logLevel: {{ .Values.config.logLevel | quote }}
+    batchWindowSeconds: {{ .Values.config.batchWindowSeconds }}
+    cronjob:
+      name: {{ .Values.config.cronjob.name | quote }}
+      namespace: {{ .Values.config.cronjob.namespace | quote }}
+    repos:
+    {{- range .Values.config.repos }}
+      - {{ . | quote }}
+    {{- end }}

@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "renovate-trigger.fullname" . }}
+  namespace: {{ .Values.rbac.jobNamespace }}
+  labels:
+    {{- include "renovate-trigger.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "renovate-trigger.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "renovate-trigger.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
