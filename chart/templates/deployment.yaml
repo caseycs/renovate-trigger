@@ -11,8 +11,6 @@ spec:
       {{- include "renovate-trigger.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "renovate-trigger.selectorLabels" . | nindent 8 }}
     spec:
@@ -30,15 +28,27 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
-            - name: RT_WEBHOOKSECRET
+            - name: RT_LISTEN_ADDR
+              value: {{ .Values.config.listenAddr | quote }}
+            - name: RT_LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            - name: RT_BATCH_WINDOW_SECONDS
+              value: {{ .Values.config.batchWindowSeconds | quote }}
+            - name: RT_CRONJOB_NAME
+              value: {{ .Values.config.cronjob.name | quote }}
+            - name: RT_CRONJOB_NAMESPACE
+              value: {{ .Values.config.cronjob.namespace | quote }}
+            {{- if .Values.config.repos }}
+            - name: RT_REPOS
+              value: {{ join "," .Values.config.repos | quote }}
+            {{- end }}
+            {{- if .Values.webhookSecret }}
+            - name: RT_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "renovate-trigger.fullname" . }}
                   key: webhook-secret
-          volumeMounts:
-            - name: config
-              mountPath: /etc/renovate-trigger
-              readOnly: true
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -59,7 +69,3 @@ spec:
             capabilities:
               drop:
                 - ALL
-      volumes:
-        - name: config
-          configMap:
-            name: {{ include "renovate-trigger.fullname" . }}

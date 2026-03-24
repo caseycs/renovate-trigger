@@ -3,82 +3,79 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"strings"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
-type CronJobRef struct {
-	Name      string `mapstructure:"name"`
-	Namespace string `mapstructure:"namespace"`
-}
-
 type Config struct {
-	ListenAddr         string        `mapstructure:"listenAddr"`
-	LogLevel           string        `mapstructure:"logLevel"`
-	WebhookSecret      string        `mapstructure:"webhookSecret"`
-	BatchWindowSeconds int           `mapstructure:"batchWindowSeconds"`
-	CronJob            CronJobRef    `mapstructure:"cronjob"`
-	Repos              []string      `mapstructure:"repos"`
-	BatchWindow        time.Duration `mapstructure:"-"`
+	ListenAddr    string
+	LogLevel      string
+	WebhookSecret string
+	BatchWindow   time.Duration
+	CronJobName   string
+	CronJobNs     string
+	Repos         []string
 }
 
 func Load() (Config, error) {
-	v := viper.New()
-	v.SetConfigName("renovate-trigger")
-	v.SetConfigType("yaml")
-	v.AddConfigPath("/etc/renovate-trigger")
-	v.AddConfigPath(".")
-
-	v.SetEnvPrefix("RT")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	v.SetDefault("listenAddr", ":8080")
-	v.SetDefault("logLevel", "info")
-	v.SetDefault("batchWindowSeconds", 30)
-
-	// Config file is optional — env vars can provide everything
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return Config{}, fmt.Errorf("reading config file: %w", err)
-		}
+	batchSec, _ := strconv.Atoi(envOrDefault("RT_BATCH_WINDOW_SECONDS", "30"))
+	if batchSec <= 0 {
+		batchSec = 30
 	}
 
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return Config{}, fmt.Errorf("unmarshaling config: %w", err)
+	cfg := Config{
+		ListenAddr:    envOrDefault("RT_LISTEN_ADDR", ":8080"),
+		LogLevel:      envOrDefault("RT_LOG_LEVEL", "info"),
+		WebhookSecret: os.Getenv("RT_WEBHOOK_SECRET"),
+		BatchWindow:   time.Duration(batchSec) * time.Second,
+		CronJobName:   os.Getenv("RT_CRONJOB_NAME"),
+		CronJobNs:     os.Getenv("RT_CRONJOB_NAMESPACE"),
+		Repos:         parseRepos(os.Getenv("RT_REPOS")),
 	}
 
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
 	}
 
-	cfg.BatchWindow = time.Duration(cfg.BatchWindowSeconds) * time.Second
-
 	return cfg, nil
 }
 
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func parseRepos(val string) []string {
+	if val == "" {
+		return nil
+	}
+	var repos []string
+	for _, r := range strings.Split(val, ",") {
+		r = strings.TrimSpace(r)
+		if r != "" {
+			repos = append(repos, r)
+		}
+	}
+	return repos
+}
+
 func (c Config) validate() error {
-	if c.CronJob.Name == "" {
-		return fmt.Errorf("cronjob.name is required")
+	if c.CronJobName == "" {
+		return fmt.Errorf("RT_CRONJOB_NAME is required")
 	}
-	if c.CronJob.Namespace == "" {
-		return fmt.Errorf("cronjob.namespace is required")
-	}
-	if len(c.Repos) == 0 {
-		return fmt.Errorf("repos must contain at least one entry")
+	if c.CronJobNs == "" {
+		return fmt.Errorf("RT_CRONJOB_NAMESPACE is required")
 	}
 	if c.WebhookSecret == "" {
-		return fmt.Errorf("webhookSecret is required (set RT_WEBHOOKSECRET env var)")
-	}
-	if c.BatchWindowSeconds <= 0 {
-		return fmt.Errorf("batchWindowSeconds must be > 0")
+		return fmt.Errorf("RT_WEBHOOK_SECRET is required")
 	}
 	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 	if !validLevels[strings.ToLower(c.LogLevel)] {
-		return fmt.Errorf("logLevel must be one of: debug, info, warn, error")
+		return fmt.Errorf("RT_LOG_LEVEL must be one of: debug, info, warn, error")
 	}
 	return nil
 }

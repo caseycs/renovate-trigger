@@ -18,9 +18,10 @@ A Go application that listens for GitHub webhooks, detects tag creation events o
 - Ignore all other event types with HTTP 200 (not an error for GitHub)
 
 ### FR-3: Repository Allowlist
-- Maintain a list of allowed repositories in `renovate-trigger.yaml` config file
+- Maintain an optional list of allowed repositories in `renovate-trigger.yaml` config file
 - Match `repository.full_name` from webhook payload against the allowlist
 - Ignore events from repositories not in the allowlist
+- When repos list is empty or not configured, accept tag events from **all** repositories (no filtering)
 
 ### FR-4: Batch Collection
 - Collect matching tag events within a configurable time window (default: 30 seconds)
@@ -44,14 +45,18 @@ A Go application that listens for GitHub webhooks, detects tag creation events o
 ## Non-Functional Requirements
 
 ### NFR-1: Configuration
-- YAML config file (`renovate-trigger.yaml`) as base configuration
-- Environment variable overrides via `RT_` prefix (e.g. `RT_LISTEN_ADDR`, `RT_LOG_LEVEL`)
-- Powered by Viper library for config management
-- Config fields: `listenAddr`, `logLevel`, `webhookSecret`, `batchWindowSeconds`, `cronjob.name`, `cronjob.namespace`, `repos`
+- All configuration via environment variables (no config files)
+- `RT_LISTEN_ADDR` — HTTP listen address (default: `:8080`)
+- `RT_LOG_LEVEL` — debug, info, warn, error (default: `info`)
+- `RT_WEBHOOK_SECRET` — GitHub webhook secret (required)
+- `RT_BATCH_WINDOW_SECONDS` — batch collection window (default: `30`)
+- `RT_CRONJOB_NAME` — source CronJob name (required)
+- `RT_CRONJOB_NAMESPACE` — source CronJob namespace (required)
+- `RT_REPOS` — comma-separated allowlist, empty = accept all
 - Startup validation: all required fields must be present and valid
 
 ### NFR-2: Security
-- Webhook secret provided via environment variable (`RT_WEBHOOKSECRET`), never hardcoded
+- Webhook secret provided via environment variable (`RT_WEBHOOK_SECRET`), never hardcoded
 - HMAC-SHA256 signature validation with constant-time comparison
 - In-cluster K8s auth only (ServiceAccount)
 - RBAC least privilege: only `get` CronJobs and `create` Jobs in the target namespace
@@ -84,26 +89,20 @@ A Go application that listens for GitHub webhooks, detects tag creation events o
 
 ## Configuration Reference
 
-```yaml
-listenAddr: ":8080"              # HTTP listen address
-logLevel: "info"                 # debug | info | warn | error
-webhookSecret: ""                # GitHub webhook secret (prefer RT_WEBHOOKSECRET env)
-batchWindowSeconds: 30           # Batch collection window
-cronjob:
-  name: "renovate"               # Source CronJob name
-  namespace: "renovate"           # Source CronJob namespace
-repos:                           # Allowlisted repositories
-  - "org/repo-a"
-  - "org/repo-b"
-```
-
-All fields can be overridden via `RT_` prefixed environment variables.
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `RT_LISTEN_ADDR` | No | `:8080` | HTTP listen address |
+| `RT_LOG_LEVEL` | No | `info` | debug, info, warn, error |
+| `RT_WEBHOOK_SECRET` | Yes | — | GitHub webhook secret |
+| `RT_BATCH_WINDOW_SECONDS` | No | `30` | Batch collection window in seconds |
+| `RT_CRONJOB_NAME` | Yes | — | Source CronJob name |
+| `RT_CRONJOB_NAMESPACE` | Yes | — | Source CronJob namespace |
+| `RT_REPOS` | No | — | Comma-separated repo allowlist (empty = accept all) |
 
 ## Dependencies
 
 | Dependency | Purpose |
 |---|---|
-| `github.com/spf13/viper` | Config: YAML + env var override |
 | `k8s.io/client-go` | Kubernetes API client |
 | `k8s.io/api` | Kubernetes types (Job, CronJob) |
 | `k8s.io/apimachinery` | Kubernetes meta types |

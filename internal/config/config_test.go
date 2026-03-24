@@ -2,99 +2,136 @@ package config
 
 import (
 	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
+	"time"
 )
 
-func TestValidateValid(t *testing.T) {
-	cfg := Config{
-		ListenAddr:         ":8080",
-		LogLevel:           "info",
-		WebhookSecret:      "secret",
-		BatchWindowSeconds: 30,
-		CronJob:            CronJobRef{Name: "renovate", Namespace: "renovate"},
-		Repos:              []string{"org/repo"},
+func setEnv(t *testing.T, listenAddr, logLevel, secret, batchWindow, cronName, cronNs, repos string) {
+	t.Helper()
+	t.Setenv("RT_LISTEN_ADDR", listenAddr)
+	t.Setenv("RT_LOG_LEVEL", logLevel)
+	t.Setenv("RT_WEBHOOK_SECRET", secret)
+	t.Setenv("RT_BATCH_WINDOW_SECONDS", batchWindow)
+	t.Setenv("RT_CRONJOB_NAME", cronName)
+	t.Setenv("RT_CRONJOB_NAMESPACE", cronNs)
+	t.Setenv("RT_REPOS", repos)
+}
+
+func TestLoadValid(t *testing.T) {
+	setEnv(t, ":9090", "debug", "secret", "10", "renovate", "renovate-ns", "org/a,org/b")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
 	}
-	if err := cfg.validate(); err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if cfg.ListenAddr != ":9090" {
+		t.Errorf("ListenAddr = %q, want :9090", cfg.ListenAddr)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q, want debug", cfg.LogLevel)
+	}
+	if cfg.BatchWindow != 10*time.Second {
+		t.Errorf("BatchWindow = %v, want 10s", cfg.BatchWindow)
+	}
+	if cfg.CronJobName != "renovate" {
+		t.Errorf("CronJobName = %q, want renovate", cfg.CronJobName)
+	}
+	if cfg.CronJobNs != "renovate-ns" {
+		t.Errorf("CronJobNs = %q, want renovate-ns", cfg.CronJobNs)
+	}
+	if len(cfg.Repos) != 2 || cfg.Repos[0] != "org/a" || cfg.Repos[1] != "org/b" {
+		t.Errorf("Repos = %v, want [org/a org/b]", cfg.Repos)
 	}
 }
 
-func TestValidateMissingCronjobName(t *testing.T) {
-	cfg := Config{
-		LogLevel:           "info",
-		WebhookSecret:      "secret",
-		BatchWindowSeconds: 30,
-		CronJob:            CronJobRef{Namespace: "renovate"},
-		Repos:              []string{"org/repo"},
+func TestLoadDefaults(t *testing.T) {
+	setEnv(t, "", "", "secret", "", "renovate", "ns", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
 	}
-	if err := cfg.validate(); err == nil {
-		t.Fatal("expected error for missing cronjob name")
+	if cfg.ListenAddr != ":8080" {
+		t.Errorf("ListenAddr = %q, want :8080 (default)", cfg.ListenAddr)
+	}
+	if cfg.LogLevel != "info" {
+		t.Errorf("LogLevel = %q, want info (default)", cfg.LogLevel)
+	}
+	if cfg.BatchWindow != 30*time.Second {
+		t.Errorf("BatchWindow = %v, want 30s (default)", cfg.BatchWindow)
 	}
 }
 
-func TestValidateMissingCronjobNamespace(t *testing.T) {
-	cfg := Config{
-		LogLevel:           "info",
-		WebhookSecret:      "secret",
-		BatchWindowSeconds: 30,
-		CronJob:            CronJobRef{Name: "renovate"},
-		Repos:              []string{"org/repo"},
-	}
-	if err := cfg.validate(); err == nil {
-		t.Fatal("expected error for missing cronjob namespace")
+func TestLoadMissingCronJobName(t *testing.T) {
+	setEnv(t, "", "", "secret", "", "", "ns", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for missing RT_CRONJOB_NAME")
 	}
 }
 
-func TestValidateEmptyRepos(t *testing.T) {
-	cfg := Config{
-		LogLevel:           "info",
-		WebhookSecret:      "secret",
-		BatchWindowSeconds: 30,
-		CronJob:            CronJobRef{Name: "renovate", Namespace: "renovate"},
-		Repos:              []string{},
-	}
-	if err := cfg.validate(); err == nil {
-		t.Fatal("expected error for empty repos")
+func TestLoadMissingCronJobNamespace(t *testing.T) {
+	setEnv(t, "", "", "secret", "", "renovate", "", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for missing RT_CRONJOB_NAMESPACE")
 	}
 }
 
-func TestValidateMissingWebhookSecret(t *testing.T) {
-	cfg := Config{
-		LogLevel:           "info",
-		BatchWindowSeconds: 30,
-		CronJob:            CronJobRef{Name: "renovate", Namespace: "renovate"},
-		Repos:              []string{"org/repo"},
-	}
-	if err := cfg.validate(); err == nil {
-		t.Fatal("expected error for missing webhook secret")
+func TestLoadMissingWebhookSecret(t *testing.T) {
+	setEnv(t, "", "", "", "", "renovate", "ns", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for missing RT_WEBHOOK_SECRET")
 	}
 }
 
-func TestValidateInvalidBatchWindow(t *testing.T) {
-	cfg := Config{
-		LogLevel:           "info",
-		WebhookSecret:      "secret",
-		BatchWindowSeconds: 0,
-		CronJob:            CronJobRef{Name: "renovate", Namespace: "renovate"},
-		Repos:              []string{"org/repo"},
-	}
-	if err := cfg.validate(); err == nil {
-		t.Fatal("expected error for invalid batch window")
-	}
-}
+func TestLoadInvalidLogLevel(t *testing.T) {
+	setEnv(t, "", "verbose", "secret", "", "renovate", "ns", "")
 
-func TestValidateInvalidLogLevel(t *testing.T) {
-	cfg := Config{
-		LogLevel:           "verbose",
-		WebhookSecret:      "secret",
-		BatchWindowSeconds: 30,
-		CronJob:            CronJobRef{Name: "renovate", Namespace: "renovate"},
-		Repos:              []string{"org/repo"},
-	}
-	if err := cfg.validate(); err == nil {
+	_, err := Load()
+	if err == nil {
 		t.Fatal("expected error for invalid log level")
+	}
+}
+
+func TestLoadEmptyReposAccepted(t *testing.T) {
+	setEnv(t, "", "", "secret", "", "renovate", "ns", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("empty repos should be valid: %v", err)
+	}
+	if len(cfg.Repos) != 0 {
+		t.Errorf("Repos = %v, want empty", cfg.Repos)
+	}
+}
+
+func TestParseRepos(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"", nil},
+		{"org/a", []string{"org/a"}},
+		{"org/a,org/b", []string{"org/a", "org/b"}},
+		{" org/a , org/b , org/c ", []string{"org/a", "org/b", "org/c"}},
+		{"org/a,,org/b", []string{"org/a", "org/b"}},
+	}
+	for _, tt := range tests {
+		got := parseRepos(tt.input)
+		if len(got) != len(tt.expected) {
+			t.Errorf("parseRepos(%q) = %v, want %v", tt.input, got, tt.expected)
+			continue
+		}
+		for i := range got {
+			if got[i] != tt.expected[i] {
+				t.Errorf("parseRepos(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.expected[i])
+			}
+		}
 	}
 }
 
@@ -131,78 +168,10 @@ func TestRepoSet(t *testing.T) {
 	}
 }
 
-func TestLoadFromFile(t *testing.T) {
-	dir := t.TempDir()
-	configContent := `
-listenAddr: ":9090"
-logLevel: "debug"
-webhookSecret: "test-secret"
-batchWindowSeconds: 10
-cronjob:
-  name: "my-renovate"
-  namespace: "my-ns"
-repos:
-  - "org/repo-1"
-  - "org/repo-2"
-`
-	err := os.WriteFile(filepath.Join(dir, "renovate-trigger.yaml"), []byte(configContent), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	if cfg.ListenAddr != ":9090" {
-		t.Errorf("ListenAddr = %q, want :9090", cfg.ListenAddr)
-	}
-	if cfg.LogLevel != "debug" {
-		t.Errorf("LogLevel = %q, want debug", cfg.LogLevel)
-	}
-	if cfg.CronJob.Name != "my-renovate" {
-		t.Errorf("CronJob.Name = %q, want my-renovate", cfg.CronJob.Name)
-	}
-	if len(cfg.Repos) != 2 {
-		t.Errorf("len(Repos) = %d, want 2", len(cfg.Repos))
-	}
-}
-
-func TestLoadEnvOverride(t *testing.T) {
-	dir := t.TempDir()
-	configContent := `
-listenAddr: ":8080"
-logLevel: "info"
-webhookSecret: "file-secret"
-batchWindowSeconds: 30
-cronjob:
-  name: "renovate"
-  namespace: "renovate"
-repos:
-  - "org/repo"
-`
-	err := os.WriteFile(filepath.Join(dir, "renovate-trigger.yaml"), []byte(configContent), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	t.Setenv("RT_LISTENADDR", ":9999")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	if cfg.ListenAddr != ":9999" {
-		t.Errorf("ListenAddr = %q, want :9999 (env override)", cfg.ListenAddr)
+func TestRepoSetEmpty(t *testing.T) {
+	cfg := Config{Repos: nil}
+	set := cfg.RepoSet()
+	if len(set) != 0 {
+		t.Errorf("expected empty set, got %v", set)
 	}
 }

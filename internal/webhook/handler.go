@@ -68,10 +68,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	repo := payload.Repository.FullName
-	if _, ok := h.repos[repo]; !ok {
-		h.logger.Info("repo not in allowlist", "repo", repo)
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "repo not in allowlist"})
-		return
+	if len(h.repos) > 0 {
+		if _, ok := h.repos[repo]; !ok {
+			h.logger.Info("repo not in allowlist", "repo", repo)
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "repo not in allowlist"})
+			return
+		}
 	}
 
 	h.logger.Info("tag event accepted", "repo", repo, "tag", payload.Ref)

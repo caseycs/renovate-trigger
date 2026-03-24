@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["image", "config"],
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "image": {
+      "type": "object",
+      "required": ["repository"],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"],
+          "default": "IfNotPresent"
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": ["cronjob"],
+      "properties": {
+        "listenAddr": {
+          "type": "string",
+          "default": ":8080"
+        },
+        "logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "info"
+        },
+        "batchWindowSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        },
+        "cronjob": {
+          "type": "object",
+          "required": ["name", "namespace"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "namespace": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "repos": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      }
+    },
+    "webhookSecret": {
+      "type": "string"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "default": true
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "jobNamespace": {
+          "type": "string",
+          "description": "Namespace where CronJobs/Jobs live. Defaults to release namespace."
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+          "default": "ClusterIP"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 8080
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        }
+      }
+    },
+    "extraObjects": {
+      "type": "array",
+      "description": "Additional Kubernetes objects to create (e.g. Ingress)",
+      "items": {
+        "type": "object"
+      },
+      "default": []
+    }
+  }
+}

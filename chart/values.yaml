@@ -2,7 +2,6 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/org/renovate-trigger
-  tag: ""
   pullPolicy: IfNotPresent
 
 config:
@@ -12,18 +11,12 @@ config:
   cronjob:
     name: "renovate"
     namespace: "renovate"
-  repos:
-    - "org/repo-a"
-    - "org/repo-b"
-
-webhookSecret: ""
+  repos: []
 
 serviceAccount:
   create: true
-  name: ""
 
-rbac:
-  jobNamespace: "renovate"
+rbac: {}
 
 service:
   type: ClusterIP
@@ -36,3 +29,5 @@ resources:
   limits:
     cpu: 200m
     memory: 128Mi
+
+extraObjects: []

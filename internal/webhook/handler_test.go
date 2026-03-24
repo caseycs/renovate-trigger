@@ -141,6 +141,34 @@ func TestHandlerRepoNotInAllowlist(t *testing.T) {
 	}
 }
 
+func TestHandlerEmptyAllowlistAcceptsAll(t *testing.T) {
+	secret := "secret"
+	emptyRepos := map[string]struct{}{}
+	batch := &mockBatch{}
+	h := NewHandler(secret, emptyRepos, batch, testLogger())
+
+	payload := CreateEvent{
+		Ref:        "v2.0.0",
+		RefType:    "tag",
+		Repository: Repository{FullName: "any-org/any-repo"},
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", signBody(body, secret))
+	req.Header.Set("X-GitHub-Event", "create")
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want %d (empty allowlist should accept all)", rr.Code, http.StatusAccepted)
+	}
+	if len(batch.added) != 1 || batch.added[0] != "any-org/any-repo" {
+		t.Errorf("batch.added = %v, want [any-org/any-repo]", batch.added)
+	}
+}
+
 func TestHandlerMethodNotAllowed(t *testing.T) {
 	h := NewHandler("secret", nil, &mockBatch{}, testLogger())
 
