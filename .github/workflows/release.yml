@@ -28,10 +28,19 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
     steps:
+      # Mint a GitHub App token so the release PR is authored by the App, not
+      # github-actions[bot]. PRs opened with the default GITHUB_TOKEN have their
+      # CI gated behind manual "Approve and run"; an App-authored PR runs CI
+      # normally.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
       - id: release
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
   publish:
     name: publish image & chart
