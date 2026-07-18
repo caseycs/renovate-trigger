@@ -14,6 +14,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+const (
+	// managedByLabel/managedByValue mark the Jobs we create, so the run gate can
+	// tell our runs apart from unrelated Jobs.
+	managedByLabel = "app.kubernetes.io/managed-by"
+	managedByValue = "renovate-trigger"
+)
+
 type JobCreator struct {
 	client           kubernetes.Interface
 	cronJobName      string
@@ -68,7 +75,7 @@ func (jc *JobCreator) CreateJobForRepos(ctx context.Context, repos []string) (st
 			GenerateName: "renovate-trigger-",
 			Namespace:    jc.cronJobNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "renovate-trigger",
+				managedByLabel: managedByValue,
 			},
 			Annotations: map[string]string{
 				"renovate-trigger/repos":        repoAnnotation,
