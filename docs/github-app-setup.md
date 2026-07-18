@@ -23,7 +23,7 @@ The manifest conversion returns `client_id`, `pem`, and `webhook_secret`, which
 map to the Secret keys `github-client-id`, `github-app-private-key`, and
 `webhook-secret`.
 
-## Option A — `skyline` (recommended)
+## Creating the App with `skyline`
 
 [`cased/skyline`](https://github.com/cased/skyline) is a small CLI that drives
 the manifest flow end to end: it opens the pre-filled GitHub page, **captures
@@ -83,64 +83,11 @@ kubectl create secret generic renovate-trigger -n renovate \
 Delete `.env` and the PEM once the Secret exists, then
 [install the App on your repos](#install-the-app-on-your-repositories) and deploy.
 
-## Option B — Manifest flow by hand (no extra tooling)
-
-If you'd rather not install skyline, run the same flow manually with a browser
-and `gh`.
-
-### 1. Save this as `app-manifest.html`
-
-Edit the `EDIT_ME` values. For an org-owned App, change the form `action` to
-`https://github.com/organizations/<ORG>/settings/apps/new?state=abc123`.
-
-```html
-<!doctype html>
-<form id="f" method="post"
-      action="https://github.com/settings/apps/new?state=abc123">
-  <input type="hidden" name="manifest" id="manifest">
-  <button type="submit">Create renovate-trigger GitHub App</button>
-</form>
-<script>
-  document.getElementById("manifest").value = JSON.stringify({
-    name: "renovate-trigger",                       // EDIT_ME (unique on GitHub)
-    url: "https://github.com/caseycs/renovate-trigger",
-    hook_attributes: {
-      url: "https://renovate-trigger.example.com/webhook", // EDIT_ME (your Ingress)
-      active: true
-    },
-    redirect_url: "http://localhost/",              // where GitHub returns the code
-    public: false,
-    default_permissions: { contents: "read" },
-    default_events: ["create"]
-  });
-</script>
-```
-
-### 2. Create, then exchange the code
-
-Open it in a browser logged into GitHub → submit → **Create GitHub App**. GitHub
-redirects to `http://localhost/?code=<CODE>&state=abc123`; the page failing to
-load is expected — **copy `code` from the address bar**. The code is single-use
-and expires after **1 hour**.
-
-```sh
-gh api -X POST /app-manifests/<CODE>/conversions > app.json
-
-jq -r .pem app.json > renovate-trigger.private-key.pem
-chmod 600 renovate-trigger.private-key.pem
-
-kubectl create secret generic renovate-trigger -n renovate \
-  --from-literal=github-client-id="$(jq -r .client_id app.json)" \
-  --from-file=github-app-private-key=renovate-trigger.private-key.pem \
-  --from-literal=webhook-secret="$(jq -r .webhook_secret app.json)"
-
-jq -r '"install at: " + .html_url + "/installations/new"' app.json
-```
-
 ## Install the App on your repositories
 
-Open `<html_url>/installations/new` (from skyline's output or `app.json`) and
-install the App on the **dependency** repos whose tags should trigger Renovate.
+From skyline's output, open the App's settings page and click **Install App**
+(or go to `https://github.com/settings/apps/<app-slug>/installations`), then
+install it on the **dependency** repos whose tags should trigger Renovate.
 This is a separate consent step — it cannot be scripted by the App owner. Then
 deploy the chart ([README step 3](../README.md#3-configure-and-deploy)) and opt
 repos in ([README step 4](../README.md#4-opt-repositories-in)).
@@ -153,7 +100,6 @@ repos in ([README step 4](../README.md#4-opt-repositories-in)).
 - **Existing-App private keys are UI-only** — there is no REST endpoint to
   generate or download a key for an App that already exists; the manifest
   conversion returns the PEM **only** at creation time.
-- The conversion `code` expires after **1 hour** and can be used **once**.
 - **Installing on repositories** requires the installer's consent and is not
   scriptable by the owner.
 
