@@ -1,0 +1,10 @@
+# Patterns to ignore when building packages.
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.tmp
+*.orig
+*.bak
+# helm-unittest suites — test-only, not part of the packaged chart
+tests/

@@ -71,12 +71,19 @@ the [configuration reference](./REQUIREMENTS.md#configuration-reference).
 
 ## Releasing
 
-Releases are automated. Conventional-commit history on `main` drives
-[release-please](https://github.com/googleapis/release-please), which opens a
-release PR bumping the version and `chart/Chart.yaml`. Merging that PR tags
-`vX.Y.Z`, and the `release` workflow publishes the multi-arch image and the Helm
-chart to GHCR under one shared version (image tag = chart `version` =
-`appVersion`).
+Commit to `main` freely; releases are cut on demand.
+[Release Drafter](https://github.com/release-drafter/release-drafter) keeps a
+**draft GitHub Release** continuously up to date — categorising merged PRs and
+resolving the next `vX.Y.Z` from their labels (Conventional-Commit titles are
+auto-labelled). When you want to ship, **publish that draft release** (tweak the
+tag first if you want a different bump). Publishing fires the `release` workflow,
+which builds the multi-arch image and packages/pushes the Helm chart to GHCR
+under one shared version (image tag = chart `version` = `appVersion`, taken from
+the release tag).
+
+The chart in git keeps a placeholder `0.1.0`; the published artifacts are
+stamped with the release tag at package time, so no in-repo version bump is
+needed.
 
 For a local multi-arch build (dev only; releases go through CI):
 

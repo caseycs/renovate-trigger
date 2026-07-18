@@ -1,0 +1,49 @@
+suite: rbac
+tests:
+  - it: grants get on cronjobs and create on jobs
+    template: templates/role.yaml
+    asserts:
+      - isKind:
+          of: Role
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["batch"]
+            resources: ["cronjobs"]
+            verbs: ["get"]
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create"]
+
+  - it: defaults the RBAC namespace to the release namespace
+    template: templates/role.yaml
+    release:
+      namespace: renovate
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: renovate
+
+  - it: targets a custom rbac.jobNamespace when set
+    template: templates/role.yaml
+    set:
+      rbac.jobNamespace: ci-jobs
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: ci-jobs
+
+  - it: binds the Role to the service account
+    template: templates/rolebinding.yaml
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - equal:
+          path: roleRef.kind
+          value: Role
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount

@@ -2,5 +2,5 @@ apiVersion: v2
 name: renovate-trigger
 description: Triggers Renovate CronJob on GitHub tag creation webhooks
 type: application
-version: 0.1.0 # x-release-please-version
-appVersion: "0.1.0" # x-release-please-version
+version: 0.1.0
+appVersion: "0.1.0"

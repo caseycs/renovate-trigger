@@ -22,6 +22,10 @@ jobs:
           helm template renovate-trigger chart \
             --set config.cronjob.name=renovate \
             --set config.cronjob.namespace=renovate
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest
+      - name: helm unittest
+        run: helm unittest chart
 
   image:
     name: docker build (no push)
