@@ -25,5 +25,9 @@ coverage.txt
 .DS_Store
 Thumbs.db
 
+# Animation (Remotion) — commit source + the rendered GIF, ignore deps/renders
+docs/animation/node_modules/
+docs/animation/out/
+
 # Claude
 .claude/
