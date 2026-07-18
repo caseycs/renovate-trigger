@@ -1,5 +1,5 @@
 # Binaries
-renovate-trigger
+/renovate-trigger
 *.exe
 *.exe~
 *.dll
