@@ -9,11 +9,12 @@ export const Box: React.FC<{
   h: number;
   title: string;
   subtitle?: string;
+  titleSize?: number;
   appearAt: number;
   activeFrom?: number;
   activeTo?: number;
   children?: React.ReactNode;
-}> = ({ x, y, w, h, title, subtitle, appearAt, activeFrom = -1, activeTo = -1, children }) => {
+}> = ({ x, y, w, h, title, subtitle, titleSize = 26, appearAt, activeFrom = -1, activeTo = -1, children }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -44,7 +45,7 @@ export const Box: React.FC<{
         fontFamily: theme.sans,
       }}
     >
-      <div style={{ color: theme.text, fontSize: 26, fontWeight: 700 }}>{title}</div>
+      <div style={{ color: theme.text, fontSize: titleSize, fontWeight: 700 }}>{title}</div>
       {subtitle ? (
         <div style={{ color: theme.subtle, fontSize: 20, fontFamily: theme.mono }}>{subtitle}</div>
       ) : null}
