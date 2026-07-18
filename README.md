@@ -81,9 +81,11 @@ which builds the multi-arch image and packages/pushes the Helm chart to GHCR
 under one shared version (image tag = chart `version` = `appVersion`, taken from
 the release tag).
 
-The chart in git keeps a placeholder `0.1.0`; the published artifacts are
-stamped with the release tag at package time, so no in-repo version bump is
-needed.
+After a successful publish, the workflow commits the resolved version back to
+`chart/Chart.yaml` (`version` + `appVersion`) on `main` — a
+`chore: set chart version to X.Y.Z [skip ci]` commit — so the repo always
+reflects the latest released version. The artifacts are stamped from the release
+tag at package time regardless, so the two never drift.
 
 For a local multi-arch build (dev only; releases go through CI):
 

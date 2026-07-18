@@ -18,6 +18,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
 
@@ -70,3 +72,33 @@ jobs:
             --password "${{ secrets.GITHUB_TOKEN }}"
           helm package chart --version "$VERSION" --app-version "$VERSION"
           helm push "renovate-trigger-${VERSION}.tgz" "$CHART_REGISTRY"
+
+  # Record the released version back in git so chart/Chart.yaml (which otherwise
+  # keeps a placeholder) matches the artifacts. Runs only after a successful
+  # publish, so we never commit a version that didn't ship.
+  version-bump:
+    name: commit chart version
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set Chart.yaml to the release version
+        env:
+          VERSION: ${{ needs.publish.outputs.version }}
+        # yq is preinstalled on ubuntu-latest runners.
+        run: |
+          yq -i '.version = strenv(VERSION) | .appVersion = strenv(VERSION)' chart/Chart.yaml
+
+      - name: Commit the bump to main
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          branch: main
+          file_pattern: chart/Chart.yaml
+          commit_message: "chore: set chart version to ${{ needs.publish.outputs.version }} [skip ci]"
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
