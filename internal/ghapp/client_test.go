@@ -149,7 +149,7 @@ func TestAppJWTHasClientIDAndRS256(t *testing.T) {
 			return nil, fmt.Errorf("alg = %s, want RS256", tok.Method.Alg())
 		}
 		return &key.PublicKey, nil
-	})
+	}, jwt.WithTimeFunc(func() time.Time { return fixedNow })) // validate exp against the same fixed clock the token was minted with
 	if err != nil {
 		t.Fatalf("parsing app jwt: %v", err)
 	}
