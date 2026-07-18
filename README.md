@@ -86,8 +86,17 @@ key or an unreachable CronJob crash-loops the pod at boot (fail-loud by design).
 
 ### 4. Point the webhook at the service
 
-Expose the `Service` (port 8080, path `/webhook`) through your Ingress at the
-host you used for the App's webhook URL in step 1.
+Expose the `Service` (port 8080, path `/webhook`) at the host you used for the
+App's webhook URL in step 1. The chart can render the routing for you — enable
+one of:
+
+- `--set ingress.enabled=true --set ingress.host=<host>` — a standard Kubernetes
+  `Ingress` (optionally `ingress.className`, `ingress.tls.enabled`).
+- `--set ingressRoute.enabled=true --set ingressRoute.host=<host>` — a Traefik
+  `IngressRoute` (`ingressRoute.entryPoint`, `ingressRoute.tls`, extra
+  `ingressRoute.labels`).
+
+Both are off by default; wire your own routing instead if you prefer.
 
 ### 5. Opt repositories in
 

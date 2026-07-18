@@ -41,4 +41,32 @@ resources:
     cpu: 200m
     memory: 128Mi
 
+# Standard Kubernetes Ingress exposing the /webhook endpoint. Disabled by
+# default; enable and fill in the host for your environment.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: renovate-trigger.example.com
+  path: /webhook
+  pathType: Prefix
+  tls:
+    enabled: false
+    # Defaults to "<fullname>-tls" when empty.
+    secretName: ""
+
+# Traefik IngressRoute (traefik.io/v1alpha1) exposing the /webhook endpoint.
+# Disabled by default; enable if your cluster routes via Traefik CRDs.
+ingressRoute:
+  enabled: false
+  entryPoint: websecure
+  host: renovate-trigger.example.com
+  pathPrefix: /webhook
+  # Extra metadata labels, e.g. { nobi.life/traefik-scope: external }.
+  labels: {}
+  tls:
+    enabled: true
+    # Defaults to "<fullname>-tls" when empty.
+    secretName: ""
+
 extraObjects: []

@@ -117,9 +117,48 @@
         }
       }
     },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "className": { "type": "string" },
+        "annotations": { "type": "object" },
+        "host": { "type": "string" },
+        "path": { "type": "string", "default": "/webhook" },
+        "pathType": {
+          "type": "string",
+          "enum": ["Prefix", "Exact", "ImplementationSpecific"],
+          "default": "Prefix"
+        },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "secretName": { "type": "string" }
+          }
+        }
+      }
+    },
+    "ingressRoute": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "entryPoint": { "type": "string", "default": "websecure" },
+        "host": { "type": "string" },
+        "pathPrefix": { "type": "string", "default": "/webhook" },
+        "labels": { "type": "object" },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "secretName": { "type": "string" }
+          }
+        }
+      }
+    },
     "extraObjects": {
       "type": "array",
-      "description": "Additional Kubernetes objects to create (e.g. Ingress)",
+      "description": "Additional Kubernetes objects to create",
       "items": {
         "type": "object"
       },

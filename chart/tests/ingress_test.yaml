@@ -1,0 +1,90 @@
+suite: ingress
+tests:
+  - it: renders no Ingress by default
+    template: templates/ingress.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders no IngressRoute by default
+    template: templates/ingressroute.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders an Ingress routing /webhook to the service when enabled
+    template: templates/ingress.yaml
+    set:
+      ingress.enabled: true
+      ingress.host: rt.example.com
+      ingress.className: nginx
+    asserts:
+      - isKind:
+          of: Ingress
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+      - equal:
+          path: spec.rules[0].host
+          value: rt.example.com
+      - equal:
+          path: spec.rules[0].http.paths[0].path
+          value: /webhook
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.number
+          value: 8080
+
+  - it: adds Ingress TLS with a defaulted secret name when tls enabled
+    template: templates/ingress.yaml
+    release:
+      name: rt
+    set:
+      ingress.enabled: true
+      ingress.host: rt.example.com
+      ingress.tls.enabled: true
+    asserts:
+      - equal:
+          path: spec.tls[0].hosts[0]
+          value: rt.example.com
+      - equal:
+          path: spec.tls[0].secretName
+          value: rt-renovate-trigger-tls
+
+  - it: renders a Traefik IngressRoute for /webhook when enabled
+    template: templates/ingressroute.yaml
+    set:
+      ingressRoute.enabled: true
+      ingressRoute.host: rt.example.com
+      ingressRoute.entryPoint: websecure
+    asserts:
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: apiVersion
+          value: traefik.io/v1alpha1
+      - equal:
+          path: spec.entryPoints[0]
+          value: websecure
+      - equal:
+          path: spec.routes[0].match
+          value: Host(`rt.example.com`) && PathPrefix(`/webhook`)
+      - equal:
+          path: spec.routes[0].services[0].port
+          value: 8080
+
+  - it: carries extra IngressRoute labels and defaulted TLS secret
+    template: templates/ingressroute.yaml
+    release:
+      name: rt
+    set:
+      ingressRoute.enabled: true
+      ingressRoute.host: rt.example.com
+      ingressRoute.labels:
+        nobi.life/traefik-scope: external
+    asserts:
+      - equal:
+          path: metadata.labels["nobi.life/traefik-scope"]
+          value: external
+      - equal:
+          path: spec.tls.secretName
+          value: rt-renovate-trigger-tls
