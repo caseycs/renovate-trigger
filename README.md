@@ -58,6 +58,10 @@ user-owned):
 Store these three — **client ID**, **private key** (PEM), and **webhook secret**
 — in the existing credentials Secret (see step 3).
 
+> Prefer to skip the manual clicking? [`docs/github-app-setup.md`](./docs/github-app-setup.md)
+> covers the semi-automated **App manifest flow** (one browser click, then
+> `gh api` hands back the credentials, including the private key).
+
 ### 2. Install the App on your repositories
 
 Install the App on the **dependency** repos whose tags should trigger Renovate.
