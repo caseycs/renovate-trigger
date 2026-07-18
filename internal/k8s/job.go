@@ -15,18 +15,18 @@ import (
 )
 
 type JobCreator struct {
-	client          kubernetes.Interface
-	cronJobName     string
+	client           kubernetes.Interface
+	cronJobName      string
 	cronJobNamespace string
-	logger          *slog.Logger
+	logger           *slog.Logger
 }
 
 func NewJobCreator(client kubernetes.Interface, cronJobName, cronJobNamespace string, logger *slog.Logger) *JobCreator {
 	return &JobCreator{
-		client:          client,
-		cronJobName:     cronJobName,
+		client:           client,
+		cronJobName:      cronJobName,
 		cronJobNamespace: cronJobNamespace,
-		logger:          logger,
+		logger:           logger,
 	}
 }
 
