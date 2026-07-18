@@ -1,11 +1,13 @@
 package batch
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,6 +38,11 @@ func (f *fakeCreator) snapshot() (int, []string) {
 	return f.calls, append([]string(nil), f.repos...)
 }
 
+// openGate never reports an active run.
+type openGate struct{}
+
+func (openGate) Active(context.Context) (bool, error) { return false, nil }
+
 // stubGate reports a fixed active state.
 type stubGate struct {
 	active bool
@@ -43,6 +50,24 @@ type stubGate struct {
 }
 
 func (g stubGate) Active(context.Context) (bool, error) { return g.active, g.err }
+
+// scriptedGate returns a scripted sequence of active states, then clear.
+type scriptedGate struct {
+	mu      sync.Mutex
+	results []bool
+	calls   int
+}
+
+func (g *scriptedGate) Active(context.Context) (bool, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	i := g.calls
+	g.calls++
+	if i < len(g.results) {
+		return g.results[i], nil
+	}
+	return false, nil
+}
 
 // stubResolver returns a fixed dependent set.
 type stubResolver struct{ deps []string }
@@ -62,7 +87,7 @@ func newTestCollector(window time.Duration, gate RunGate, resolver Resolver, cre
 
 func TestCollectorFlushesAfterWindow(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(100*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
+	c := newTestCollector(100*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	c.Add("org/repo-a")
@@ -82,7 +107,7 @@ func TestCollectorFlushesAfterWindow(t *testing.T) {
 
 func TestCollectorDeduplicates(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(100*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
+	c := newTestCollector(100*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	c.Add("org/repo-a")
@@ -99,7 +124,7 @@ func TestCollectorDeduplicates(t *testing.T) {
 
 func TestCollectorNoFlushWhenEmpty(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
+	c := newTestCollector(50*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	time.Sleep(150 * time.Millisecond)
@@ -111,7 +136,7 @@ func TestCollectorNoFlushWhenEmpty(t *testing.T) {
 
 func TestCollectorStopCancelsTimer(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(200*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
+	c := newTestCollector(200*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 
 	c.Add("org/repo")
 	c.Stop()
@@ -125,7 +150,7 @@ func TestCollectorStopCancelsTimer(t *testing.T) {
 
 func TestCollectorConcurrentAdd(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(200*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
+	c := newTestCollector(200*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	var wg sync.WaitGroup
@@ -153,7 +178,7 @@ func TestCollectorConcurrentAdd(t *testing.T) {
 // The pass-through resolver seam feeds the source repos straight to the creator.
 func TestCollectorResolvesThroughSeam(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, OpenGate{}, stubResolver{deps: []string{"org/dependent"}}, creator)
+	c := newTestCollector(50*time.Millisecond, openGate{}, stubResolver{deps: []string{"org/dependent"}}, creator)
 	defer c.Stop()
 
 	c.Add("org/source")
@@ -168,7 +193,7 @@ func TestCollectorResolvesThroughSeam(t *testing.T) {
 // An empty resolution creates no job.
 func TestCollectorEmptyResolutionCreatesNoJob(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, OpenGate{}, stubResolver{deps: nil}, creator)
+	c := newTestCollector(50*time.Millisecond, openGate{}, stubResolver{deps: nil}, creator)
 	defer c.Stop()
 
 	c.Add("org/source")
@@ -179,30 +204,70 @@ func TestCollectorEmptyResolutionCreatesNoJob(t *testing.T) {
 	}
 }
 
-// An active run postpones the flush (no job created, batch retained).
-func TestCollectorPostponesWhenGateActive(t *testing.T) {
+// Scripted gate active -> active -> clear: the batch is retained and keeps
+// accumulating across postpones, then drains exactly once into a single job.
+// Driven via direct attemptFlush calls with a long window so no real timer fires.
+func TestCollectorPostponesUntilGateClears(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, stubGate{active: true}, passthroughResolver{}, creator)
+	gate := &scriptedGate{results: []bool{true, true, false}}
+	c := newTestCollector(time.Hour, gate, passthroughResolver{}, creator)
 	defer c.Stop()
 
-	c.Add("org/source")
-	time.Sleep(150 * time.Millisecond)
-
+	c.Add("org/source-a")
+	c.attemptFlush() // active #1 -> postpone
 	if calls, _ := creator.snapshot(); calls != 0 {
-		t.Error("no job should be created while a run is active")
+		t.Fatal("no job expected on first (active) attempt")
+	}
+
+	c.Add("org/source-b") // accumulates during postpone
+	c.Add("org/source-a") // duplicate during postpone -> deduped
+	c.attemptFlush()      // active #2 -> postpone
+	if calls, _ := creator.snapshot(); calls != 0 {
+		t.Fatal("no job expected on second (active) attempt")
+	}
+
+	c.attemptFlush() // clear -> drain once
+	calls, repos := creator.snapshot()
+	if calls != 1 {
+		t.Fatalf("expected exactly 1 job after gate clears, got %d", calls)
+	}
+	sort.Strings(repos)
+	if len(repos) != 2 || repos[0] != "org/source-a" || repos[1] != "org/source-b" {
+		t.Errorf("repos = %v, want both accumulated sources", repos)
 	}
 }
 
 // A gate error is treated as active (postpone), never as a green light.
 func TestCollectorGateErrorPostpones(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, stubGate{err: errors.New("boom")}, passthroughResolver{}, creator)
+	c := newTestCollector(time.Hour, stubGate{err: errors.New("boom")}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	c.Add("org/source")
-	time.Sleep(150 * time.Millisecond)
+	c.attemptFlush()
 
 	if calls, _ := creator.snapshot(); calls != 0 {
 		t.Error("no job should be created when the gate check errors")
+	}
+}
+
+// After ~10 consecutive postpones, a WARN is emitted.
+func TestCollectorWarnsAfterRepeatedPostpones(t *testing.T) {
+	creator := &fakeCreator{}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	c := NewCollector(time.Hour, stubGate{active: true}, passthroughResolver{}, creator, logger)
+	defer c.Stop()
+
+	c.Add("org/source")
+	for range postponeWarnThreshold {
+		c.attemptFlush()
+	}
+
+	if calls, _ := creator.snapshot(); calls != 0 {
+		t.Fatalf("no job should be created while the gate stays active, got %d", calls)
+	}
+	if !strings.Contains(buf.String(), "postponed repeatedly") {
+		t.Error("expected a WARN about repeated postpones after the threshold")
 	}
 }

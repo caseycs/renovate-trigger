@@ -152,7 +152,7 @@ func newFlowCollector(t *testing.T, kube *fake.Clientset, gh *httptest.Server) *
 	jc := k8s.NewJobCreator(kube, "renovate", "renovate", testLogger())
 	// A long window means the timer never fires during the test; we drive the
 	// flush ourselves via attemptFlush.
-	return NewCollector(time.Hour, OpenGate{}, resolver, jc, testLogger())
+	return NewCollector(time.Hour, openGate{}, resolver, jc, testLogger())
 }
 
 func TestFlushCreatesRenovateRunFromWebhook(t *testing.T) {

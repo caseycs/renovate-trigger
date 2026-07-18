@@ -11,6 +11,10 @@ import (
 // flush.
 const flushTimeout = 30 * time.Second
 
+// postponeWarnThreshold is the number of consecutive postpones after which the
+// collector warns that a Renovate run may be stuck.
+const postponeWarnThreshold = 10
+
 // RunGate reports whether a Renovate run is already active, so the collector can
 // avoid overlapping runs. Its full behaviour lands with mutual exclusion.
 type RunGate interface {
@@ -28,21 +32,16 @@ type JobCreator interface {
 	CreateJobForRepos(ctx context.Context, repos []string) (string, error)
 }
 
-// OpenGate is scaffolding that never reports an active run. Replaced by the real
-// RunGate when mutual exclusion is implemented.
-type OpenGate struct{}
-
-func (OpenGate) Active(context.Context) (bool, error) { return false, nil }
-
 type Collector struct {
-	mu       sync.Mutex
-	repos    map[string]struct{}
-	timer    *time.Timer
-	window   time.Duration
-	gate     RunGate
-	resolver Resolver
-	creator  JobCreator
-	logger   *slog.Logger
+	mu            sync.Mutex
+	repos         map[string]struct{}
+	timer         *time.Timer
+	postponements int
+	window        time.Duration
+	gate          RunGate
+	resolver      Resolver
+	creator       JobCreator
+	logger        *slog.Logger
 }
 
 func NewCollector(window time.Duration, gate RunGate, resolver Resolver, creator JobCreator, logger *slog.Logger) *Collector {
@@ -79,6 +78,7 @@ func (c *Collector) attemptFlush() {
 	c.mu.Lock()
 	if len(c.repos) == 0 {
 		c.timer = nil
+		c.postponements = 0
 		c.mu.Unlock()
 		return
 	}
@@ -94,9 +94,15 @@ func (c *Collector) attemptFlush() {
 	}
 	if active {
 		c.mu.Lock()
+		c.postponements++
+		n := c.postponements
 		c.timer = time.AfterFunc(c.window, c.attemptFlush)
 		c.mu.Unlock()
-		c.logger.Info("renovate run active, postponing flush")
+		if n == postponeWarnThreshold {
+			c.logger.Warn("flush postponed repeatedly; a Renovate run may be stuck", "postponements", n)
+		} else {
+			c.logger.Info("Renovate run active, postponing flush", "postponements", n)
+		}
 		return
 	}
 
@@ -107,6 +113,7 @@ func (c *Collector) attemptFlush() {
 	}
 	c.repos = make(map[string]struct{})
 	c.timer = nil
+	c.postponements = 0
 	c.mu.Unlock()
 
 	c.logger.Info("flushing batch", "sources", sources, "count", len(sources))
