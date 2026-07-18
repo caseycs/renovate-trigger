@@ -35,11 +35,14 @@ A tag on a repo with no such file (or without the App installed) is ignored.
 
 ## Install (Helm)
 
+Install into the **same namespace as the Renovate CronJob** — the service is
+co-located with it and clones its `jobTemplate`, so the CronJob namespace is just
+the release namespace.
+
 ```sh
 helm install renovate-trigger ./chart \
-  --namespace renovate-trigger --create-namespace \
+  --namespace renovate \
   --set config.cronjob.name=renovate \
-  --set config.cronjob.namespace=renovate \
   --set github.clientId=Iv23liXXXXXXXXXXXXXX \
   --set-file github.privateKey=./renovate-trigger.private-key.pem \
   --set webhook.secret="$WEBHOOK_SECRET"
