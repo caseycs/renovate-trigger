@@ -1,6 +1,6 @@
 # Build on the native host architecture (BUILDPLATFORM) to avoid QEMU emulation,
 # then cross-compile the static Go binary to the requested target arch.
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 RUN apk add --no-cache git ca-certificates
 WORKDIR /app
 COPY go.mod go.sum ./

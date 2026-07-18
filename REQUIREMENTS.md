@@ -139,7 +139,7 @@ decisions behind this shape.
   credentials (client ID, private key, webhook secret) are read from a single
   existing Secret provisioned out of band (e.g. External Secrets Operator), with
   configurable key names.
-- Multi-stage Docker build: `golang:1.24-alpine` builder,
+- Multi-stage Docker build: `golang:1.25-alpine` builder,
   `distroless/static-debian12:nonroot` runtime.
 - Multi-arch image (`linux/amd64`, `linux/arm64` via `docker buildx`): the
   builder stage runs on the native `$BUILDPLATFORM` (no QEMU emulation) and
