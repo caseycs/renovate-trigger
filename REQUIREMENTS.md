@@ -139,6 +139,9 @@ decisions behind this shape.
   App private key.
 - Multi-stage Docker build: `golang:1.24-alpine` builder,
   `distroless/static-debian12:nonroot` runtime.
+- Multi-arch image (`linux/amd64`, `linux/arm64` via `docker buildx`): the
+  builder stage runs on the native `$BUILDPLATFORM` (no QEMU emulation) and
+  cross-compiles to `$TARGETOS`/`$TARGETARCH`.
 - Static binary: `CGO_ENABLED=0`, stripped with `-ldflags="-s -w"`.
 - Resource defaults: 50m/64Mi requests, 200m/128Mi limits.
 
