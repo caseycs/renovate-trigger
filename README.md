@@ -50,18 +50,12 @@ helm install renovate-trigger oci://ghcr.io/caseycs/charts/renovate-trigger \
   --set config.cronjob.name=renovate \
   --set github.clientId=Iv23liXXXXXXXXXXXXXX \
   --set-file github.privateKey=./renovate-trigger.private-key.pem \
-  --set webhook.secret="$WEBHOOK_SECRET"
+  --set webhookSecret="$WEBHOOK_SECRET"
 ```
 
 To install from a local checkout instead, swap the chart reference for `./chart`.
 
 Then point the GitHub App's webhook URL at the Service (via your Ingress).
-
-> **Status:** the chart in `chart/` still reflects the pre-redesign layout. The
-> `github.*` / `webhook.secret` values, the App-private-key Secret mount, and the
-> `list jobs` RBAC rule land with the implementation follow-up (see the deferred
-> work in `REQUIREMENTS.md`). Until then, treat the command above as the target
-> install shape.
 
 ## Configuration
 

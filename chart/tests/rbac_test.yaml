@@ -1,6 +1,6 @@
 suite: rbac
 tests:
-  - it: grants get on cronjobs and create on jobs
+  - it: grants get on cronjobs and create+list on jobs
     template: templates/role.yaml
     asserts:
       - isKind:
@@ -16,7 +16,7 @@ tests:
           content:
             apiGroups: ["batch"]
             resources: ["jobs"]
-            verbs: ["create"]
+            verbs: ["create", "list"]
 
   - it: defaults the RBAC namespace to the release namespace
     template: templates/role.yaml
@@ -27,10 +27,10 @@ tests:
           path: metadata.namespace
           value: renovate
 
-  - it: targets a custom rbac.jobNamespace when set
+  - it: targets config.cronjob.namespace when set
     template: templates/role.yaml
     set:
-      rbac.jobNamespace: ci-jobs
+      config.cronjob.namespace: ci-jobs
     asserts:
       - equal:
           path: metadata.namespace

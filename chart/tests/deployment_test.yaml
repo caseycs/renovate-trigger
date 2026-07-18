@@ -2,13 +2,16 @@ suite: deployment
 templates:
   - templates/deployment.yaml
 tests:
-  - it: renders a single-replica Deployment
+  - it: renders a single-replica Deployment with a Recreate strategy
     asserts:
       - isKind:
           of: Deployment
       - equal:
           path: spec.replicas
           value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
 
   - it: defaults the image tag to the chart appVersion
     asserts:
@@ -25,6 +28,8 @@ tests:
           value: ghcr.io/caseycs/renovate-trigger:1.2.3
 
   - it: wires the core RT_* config into the container env
+    release:
+      namespace: renovate
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
@@ -49,37 +54,41 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: RT_CRONJOB_NAMESPACE
-            value: renovate
+            name: RT_GITHUB_APP_PRIVATE_KEY_FILE
+            value: /etc/renovate-trigger/github-app.pem
 
-  - it: omits RT_REPOS and RT_WEBHOOK_SECRET when unset
-    asserts:
-      - notContains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: RT_REPOS
-          any: true
-      - notContains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: RT_WEBHOOK_SECRET
-          any: true
-
-  - it: joins config.repos into RT_REPOS when set
-    set:
-      config.repos:
-        - org/dependent-a
-        - org/dependent-b
+  - it: defaults RT_CRONJOB_NAMESPACE to the release namespace
+    release:
+      namespace: renovate
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: RT_REPOS
-            value: org/dependent-a,org/dependent-b
+            name: RT_CRONJOB_NAMESPACE
+            value: renovate
 
-  - it: sources RT_WEBHOOK_SECRET from the Secret when webhookSecret is set
+  - it: sets RT_GITHUB_CLIENT_ID from github.clientId
     set:
-      webhookSecret: s3cr3t
+      github.clientId: Iv23liABC
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RT_GITHUB_CLIENT_ID
+            value: Iv23liABC
+
+  - it: never sets the removed RT_REPOS env
+    set:
+      config.repos:
+        - org/dependent-a
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RT_REPOS
+          any: true
+
+  - it: always sources RT_WEBHOOK_SECRET from the Secret
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
@@ -89,6 +98,24 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[?(@.name=="RT_WEBHOOK_SECRET")].valueFrom.secretKeyRef.key
           value: webhook-secret
+
+  - it: mounts the App private key from the Secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: github-app-key
+            mountPath: /etc/renovate-trigger
+            readOnly: true
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: github-app-key
+      - equal:
+          path: spec.template.spec.volumes[0].secret.items[0].key
+          value: github-app-private-key
+      - equal:
+          path: spec.template.spec.volumes[0].secret.items[0].path
+          value: github-app.pem
 
   - it: runs with a hardened security context
     asserts:
