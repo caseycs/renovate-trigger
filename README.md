@@ -14,6 +14,18 @@ trigger files.
 - Diagrams → [`WORKFLOWS.md`](./WORKFLOWS.md)
 - Design decisions → [`docs/adr/`](./docs/adr/)
 
+## How it works
+
+A new tag on a dependency repo flows through renovate-trigger — batched over a
+tumbling window, gated so runs never overlap, and resolved via
+`renovate.trigger.json` — into a one-off Renovate Job that opens a PR in the
+consuming Argo CD (dependent) repo.
+
+![renovate-trigger pipeline](docs/animation/renovate-trigger.gif)
+
+Full step-by-step diagrams are in [`WORKFLOWS.md`](./WORKFLOWS.md); the animation
+source lives in [`docs/animation/`](./docs/animation/).
+
 ## Opting a repository in
 
 Add `renovate.trigger.json` to the **default branch** of a repository whose tags
