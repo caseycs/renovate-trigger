@@ -221,7 +221,7 @@ flowchart TD
     F["CreateJobForRepos(ctx, dependents)"] --> GET["CronJobs(ns).Get(name)"]
     GET -->|error| ERR1[return error<br/>'getting cronjob']
     GET -->|ok| COPY["JobTemplate.Spec.DeepCopy<br/>(never mutate cache)"]
-    COPY --> MARSHAL["json.Marshal(dependents)<br/>→ '[\"org/a\",\"org/b\"]'"]
+    COPY --> MARSHAL["json.Marshal(dependents)<br/>→ '[&quot;org/a&quot;,&quot;org/b&quot;]'"]
     MARSHAL -->|error| ERR2[return error]
     MARSHAL -->|ok| OVERRIDE["For each container:<br/>overrideEnv RENOVATE_REPOSITORIES<br/>(replace or append)"]
     OVERRIDE --> BUILD["Build Job:<br/>GenerateName 'renovate-trigger-'<br/>label managed-by<br/>annotations dependents + triggered-at"]
