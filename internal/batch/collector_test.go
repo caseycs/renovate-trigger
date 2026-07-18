@@ -49,13 +49,20 @@ type stubResolver struct{ deps []string }
 
 func (r stubResolver) Resolve(context.Context, []string) ([]string, error) { return r.deps, nil }
 
+// passthroughResolver resolves each source repo to itself.
+type passthroughResolver struct{}
+
+func (passthroughResolver) Resolve(_ context.Context, sources []string) ([]string, error) {
+	return sources, nil
+}
+
 func newTestCollector(window time.Duration, gate RunGate, resolver Resolver, creator JobCreator) *Collector {
 	return NewCollector(window, gate, resolver, creator, testLogger())
 }
 
 func TestCollectorFlushesAfterWindow(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(100*time.Millisecond, OpenGate{}, PassthroughResolver{}, creator)
+	c := newTestCollector(100*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	c.Add("org/repo-a")
@@ -75,7 +82,7 @@ func TestCollectorFlushesAfterWindow(t *testing.T) {
 
 func TestCollectorDeduplicates(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(100*time.Millisecond, OpenGate{}, PassthroughResolver{}, creator)
+	c := newTestCollector(100*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	c.Add("org/repo-a")
@@ -92,7 +99,7 @@ func TestCollectorDeduplicates(t *testing.T) {
 
 func TestCollectorNoFlushWhenEmpty(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, OpenGate{}, PassthroughResolver{}, creator)
+	c := newTestCollector(50*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	time.Sleep(150 * time.Millisecond)
@@ -104,7 +111,7 @@ func TestCollectorNoFlushWhenEmpty(t *testing.T) {
 
 func TestCollectorStopCancelsTimer(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(200*time.Millisecond, OpenGate{}, PassthroughResolver{}, creator)
+	c := newTestCollector(200*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
 
 	c.Add("org/repo")
 	c.Stop()
@@ -118,7 +125,7 @@ func TestCollectorStopCancelsTimer(t *testing.T) {
 
 func TestCollectorConcurrentAdd(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(200*time.Millisecond, OpenGate{}, PassthroughResolver{}, creator)
+	c := newTestCollector(200*time.Millisecond, OpenGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	var wg sync.WaitGroup
@@ -175,7 +182,7 @@ func TestCollectorEmptyResolutionCreatesNoJob(t *testing.T) {
 // An active run postpones the flush (no job created, batch retained).
 func TestCollectorPostponesWhenGateActive(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, stubGate{active: true}, PassthroughResolver{}, creator)
+	c := newTestCollector(50*time.Millisecond, stubGate{active: true}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	c.Add("org/source")
@@ -189,7 +196,7 @@ func TestCollectorPostponesWhenGateActive(t *testing.T) {
 // A gate error is treated as active (postpone), never as a green light.
 func TestCollectorGateErrorPostpones(t *testing.T) {
 	creator := &fakeCreator{}
-	c := newTestCollector(50*time.Millisecond, stubGate{err: errors.New("boom")}, PassthroughResolver{}, creator)
+	c := newTestCollector(50*time.Millisecond, stubGate{err: errors.New("boom")}, passthroughResolver{}, creator)
 	defer c.Stop()
 
 	c.Add("org/source")

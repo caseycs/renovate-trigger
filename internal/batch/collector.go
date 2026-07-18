@@ -34,14 +34,6 @@ type OpenGate struct{}
 
 func (OpenGate) Active(context.Context) (bool, error) { return false, nil }
 
-// PassthroughResolver is scaffolding that resolves each source repo to itself.
-// Replaced by the real Resolver once trigger declarations are read.
-type PassthroughResolver struct{}
-
-func (PassthroughResolver) Resolve(_ context.Context, sources []string) ([]string, error) {
-	return sources, nil
-}
-
 type Collector struct {
 	mu       sync.Mutex
 	repos    map[string]struct{}
