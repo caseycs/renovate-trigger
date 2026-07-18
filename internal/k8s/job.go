@@ -30,6 +30,17 @@ func NewJobCreator(client kubernetes.Interface, cronJobName, cronJobNamespace st
 	}
 }
 
+// Verify asserts the source CronJob is gettable, so a misconfigured
+// RT_CRONJOB_NAME/RT_CRONJOB_NAMESPACE crash-loops the Deployment loudly at
+// startup instead of silently dropping every trigger at flush time.
+func (jc *JobCreator) Verify(ctx context.Context) error {
+	_, err := jc.client.BatchV1().CronJobs(jc.cronJobNamespace).Get(ctx, jc.cronJobName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("getting cronjob %s/%s: %w", jc.cronJobNamespace, jc.cronJobName, err)
+	}
+	return nil
+}
+
 func (jc *JobCreator) CreateJobForRepos(ctx context.Context, repos []string) (string, error) {
 	cronJob, err := jc.client.BatchV1().CronJobs(jc.cronJobNamespace).Get(ctx, jc.cronJobName, metav1.GetOptions{})
 	if err != nil {

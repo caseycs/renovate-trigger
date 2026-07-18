@@ -50,6 +50,27 @@ func createFakeCronJob(client *fake.Clientset, name, namespace string) error {
 	return err
 }
 
+func TestVerifyCronJobExists(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	if err := createFakeCronJob(client, "renovate", "renovate"); err != nil {
+		t.Fatal(err)
+	}
+
+	jc := NewJobCreator(client, "renovate", "renovate", testLogger())
+	if err := jc.Verify(context.Background()); err != nil {
+		t.Errorf("Verify error for existing cronjob: %v", err)
+	}
+}
+
+func TestVerifyCronJobMissing(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	jc := NewJobCreator(client, "nonexistent", "renovate", testLogger())
+	if err := jc.Verify(context.Background()); err == nil {
+		t.Fatal("expected error for missing cronjob")
+	}
+}
+
 func TestCreateJobForRepos(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	if err := createFakeCronJob(client, "renovate", "renovate"); err != nil {

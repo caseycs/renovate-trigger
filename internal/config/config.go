@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,13 +13,15 @@ import (
 )
 
 type Config struct {
-	ListenAddr    string
-	LogLevel      string
-	WebhookSecret string
-	BatchWindow   time.Duration
-	CronJobName   string
-	CronJobNs     string
-	Repos         []string
+	ListenAddr     string
+	LogLevel       string
+	WebhookSecret  string
+	BatchWindow    time.Duration
+	CronJobName    string
+	CronJobNs      string
+	GitHubClientID string
+	PrivateKeyFile string
+	PrivateKey     *rsa.PrivateKey
 }
 
 func Load() (Config, error) {
@@ -26,18 +31,25 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		ListenAddr:    envOrDefault("RT_LISTEN_ADDR", ":8080"),
-		LogLevel:      envOrDefault("RT_LOG_LEVEL", "info"),
-		WebhookSecret: os.Getenv("RT_WEBHOOK_SECRET"),
-		BatchWindow:   time.Duration(batchSec) * time.Second,
-		CronJobName:   os.Getenv("RT_CRONJOB_NAME"),
-		CronJobNs:     os.Getenv("RT_CRONJOB_NAMESPACE"),
-		Repos:         parseRepos(os.Getenv("RT_REPOS")),
+		ListenAddr:     envOrDefault("RT_LISTEN_ADDR", ":8080"),
+		LogLevel:       envOrDefault("RT_LOG_LEVEL", "info"),
+		WebhookSecret:  os.Getenv("RT_WEBHOOK_SECRET"),
+		BatchWindow:    time.Duration(batchSec) * time.Second,
+		CronJobName:    os.Getenv("RT_CRONJOB_NAME"),
+		CronJobNs:      os.Getenv("RT_CRONJOB_NAMESPACE"),
+		GitHubClientID: os.Getenv("RT_GITHUB_CLIENT_ID"),
+		PrivateKeyFile: os.Getenv("RT_GITHUB_APP_PRIVATE_KEY_FILE"),
 	}
 
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
 	}
+
+	key, err := parsePrivateKey(cfg.PrivateKeyFile)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.PrivateKey = key
 
 	return cfg, nil
 }
@@ -47,20 +59,6 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func parseRepos(val string) []string {
-	if val == "" {
-		return nil
-	}
-	var repos []string
-	for _, r := range strings.Split(val, ",") {
-		r = strings.TrimSpace(r)
-		if r != "" {
-			repos = append(repos, r)
-		}
-	}
-	return repos
 }
 
 func (c Config) validate() error {
@@ -73,11 +71,43 @@ func (c Config) validate() error {
 	if c.WebhookSecret == "" {
 		return fmt.Errorf("RT_WEBHOOK_SECRET is required")
 	}
+	if c.GitHubClientID == "" {
+		return fmt.Errorf("RT_GITHUB_CLIENT_ID is required")
+	}
+	if c.PrivateKeyFile == "" {
+		return fmt.Errorf("RT_GITHUB_APP_PRIVATE_KEY_FILE is required")
+	}
 	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 	if !validLevels[strings.ToLower(c.LogLevel)] {
 		return fmt.Errorf("RT_LOG_LEVEL must be one of: debug, info, warn, error")
 	}
 	return nil
+}
+
+// parsePrivateKey reads a PEM-encoded RSA private key (PKCS#1 or PKCS#8) from
+// path. It fails loudly so a missing or malformed key crash-loops the process
+// at boot rather than surfacing as a silent flush failure later.
+func parsePrivateKey(path string) (*rsa.PrivateKey, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading private key %s: %w", path, err)
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("private key %s is not valid PEM", path)
+	}
+	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return key, nil
+	}
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing private key %s: %w", path, err)
+	}
+	key, ok := parsed.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("private key %s is not an RSA key", path)
+	}
+	return key, nil
 }
 
 func (c Config) SlogLevel() slog.Level {
@@ -91,12 +121,4 @@ func (c Config) SlogLevel() slog.Level {
 	default:
 		return slog.LevelInfo
 	}
-}
-
-func (c Config) RepoSet() map[string]struct{} {
-	set := make(map[string]struct{}, len(c.Repos))
-	for _, r := range c.Repos {
-		set[r] = struct{}{}
-	}
-	return set
 }

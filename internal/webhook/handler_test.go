@@ -33,9 +33,8 @@ func signBody(body []byte, secret string) string {
 
 func TestHandlerTagEvent(t *testing.T) {
 	secret := "test-secret"
-	repos := map[string]struct{}{"org/repo-a": {}}
 	batch := &mockBatch{}
-	h := NewHandler(secret, repos, batch, testLogger())
+	h := NewHandler(secret, batch, testLogger())
 
 	payload := CreateEvent{
 		Ref:     "v1.0.0",
@@ -61,8 +60,37 @@ func TestHandlerTagEvent(t *testing.T) {
 	}
 }
 
+// Any signed tag event is accepted regardless of repo — the opt-in gate is
+// resolved later at flush time, not in the handler.
+func TestHandlerTagEventNoAllowlist(t *testing.T) {
+	secret := "secret"
+	batch := &mockBatch{}
+	h := NewHandler(secret, batch, testLogger())
+
+	payload := CreateEvent{
+		Ref:        "v2.0.0",
+		RefType:    "tag",
+		Repository: Repository{FullName: "any-org/any-repo"},
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", signBody(body, secret))
+	req.Header.Set("X-GitHub-Event", "create")
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusAccepted)
+	}
+	if len(batch.added) != 1 || batch.added[0] != "any-org/any-repo" {
+		t.Errorf("batch.added = %v, want [any-org/any-repo]", batch.added)
+	}
+}
+
 func TestHandlerInvalidSignature(t *testing.T) {
-	h := NewHandler("secret", nil, &mockBatch{}, testLogger())
+	h := NewHandler("secret", &mockBatch{}, testLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader([]byte("{}")))
 	req.Header.Set("X-Hub-Signature-256", "sha256=invalid")
@@ -78,7 +106,7 @@ func TestHandlerInvalidSignature(t *testing.T) {
 
 func TestHandlerNonCreateEvent(t *testing.T) {
 	secret := "secret"
-	h := NewHandler(secret, nil, &mockBatch{}, testLogger())
+	h := NewHandler(secret, &mockBatch{}, testLogger())
 
 	body := []byte(`{"action":"push"}`)
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(body))
@@ -95,8 +123,8 @@ func TestHandlerNonCreateEvent(t *testing.T) {
 
 func TestHandlerBranchRefType(t *testing.T) {
 	secret := "secret"
-	repos := map[string]struct{}{"org/repo": {}}
-	h := NewHandler(secret, repos, &mockBatch{}, testLogger())
+	batch := &mockBatch{}
+	h := NewHandler(secret, batch, testLogger())
 
 	payload := CreateEvent{
 		Ref:        "main",
@@ -115,62 +143,13 @@ func TestHandlerBranchRefType(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
-}
-
-func TestHandlerRepoNotInAllowlist(t *testing.T) {
-	secret := "secret"
-	repos := map[string]struct{}{"org/allowed": {}}
-	h := NewHandler(secret, repos, &mockBatch{}, testLogger())
-
-	payload := CreateEvent{
-		Ref:        "v1.0.0",
-		RefType:    "tag",
-		Repository: Repository{FullName: "org/not-allowed"},
-	}
-	body, _ := json.Marshal(payload)
-
-	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(body))
-	req.Header.Set("X-Hub-Signature-256", signBody(body, secret))
-	req.Header.Set("X-GitHub-Event", "create")
-
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
-	}
-}
-
-func TestHandlerEmptyAllowlistAcceptsAll(t *testing.T) {
-	secret := "secret"
-	emptyRepos := map[string]struct{}{}
-	batch := &mockBatch{}
-	h := NewHandler(secret, emptyRepos, batch, testLogger())
-
-	payload := CreateEvent{
-		Ref:        "v2.0.0",
-		RefType:    "tag",
-		Repository: Repository{FullName: "any-org/any-repo"},
-	}
-	body, _ := json.Marshal(payload)
-
-	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(body))
-	req.Header.Set("X-Hub-Signature-256", signBody(body, secret))
-	req.Header.Set("X-GitHub-Event", "create")
-
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusAccepted {
-		t.Errorf("status = %d, want %d (empty allowlist should accept all)", rr.Code, http.StatusAccepted)
-	}
-	if len(batch.added) != 1 || batch.added[0] != "any-org/any-repo" {
-		t.Errorf("batch.added = %v, want [any-org/any-repo]", batch.added)
+	if len(batch.added) != 0 {
+		t.Errorf("batch.added = %v, want empty (branch is not a tag)", batch.added)
 	}
 }
 
 func TestHandlerMethodNotAllowed(t *testing.T) {
-	h := NewHandler("secret", nil, &mockBatch{}, testLogger())
+	h := NewHandler("secret", &mockBatch{}, testLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
 	rr := httptest.NewRecorder()
