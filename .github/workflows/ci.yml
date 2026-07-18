@@ -23,7 +23,7 @@ jobs:
             --set config.cronjob.name=renovate \
             --set config.cronjob.namespace=renovate
       - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
       - name: helm unittest
         run: helm unittest chart
 
