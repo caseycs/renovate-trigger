@@ -35,8 +35,9 @@ A tag on a repo with no such file (or without the App installed) is ignored.
 - A way to expose the service's `/webhook` endpoint to GitHub (an Ingress).
 - An **existing Kubernetes Secret** with the App credentials — the chart does
   **not** create one; provision it out of band (e.g. with External Secrets
-  Operator). A single Secret with three keys: the App **client ID**, the App
-  **private key** (PEM), and the **webhook secret**.
+  Operator, or by rendering the Secret / an `ExternalSecret` through the chart's
+  `extraObjects:` value). A single Secret with three keys: the App **client ID**,
+  the App **private key** (PEM), and the **webhook secret**.
 
 ### 1. Create a GitHub App
 
