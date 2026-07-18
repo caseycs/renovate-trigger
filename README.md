@@ -25,23 +25,43 @@ should trigger Renovate on its consumers:
 
 A tag on a repo with no such file (or without the App installed) is ignored.
 
-## Prerequisites
+## Installation
 
-- A **Renovate CronJob** already deployed in the cluster — its `jobTemplate` is
-  the template this service clones.
-- A **GitHub App** with `Contents: read`, subscribed to `create` events, its
-  webhook pointing at this service, installed on the repos that opt in. You need
-  its **client ID**, a **private key** (PEM), and the **webhook secret**.
+### Prerequisites
 
-## Install (Helm)
+- A **Renovate `CronJob`** already deployed in the cluster — its `jobTemplate`
+  is what this service clones for each run.
+- Cluster access (`kubectl`/`helm`) to the CronJob's namespace.
+- A way to expose the service's `/webhook` endpoint to GitHub (an Ingress).
+
+### 1. Create a GitHub App
+
+In **Settings → Developer settings → GitHub Apps → New GitHub App** (org- or
+user-owned):
+
+- **Permissions → Repository → Contents: `Read-only`.** This is used both to read
+  each repo's `renovate.trigger.json` *and* to unlock the `Create` event below —
+  `Create` only becomes selectable once Contents is granted.
+- **Subscribe to events → check `Create`.** This is GitHub's event for tag (and
+  branch) creation; the service ignores branches and acts only on tags. There is
+  **one** App-level webhook — you never configure per-repo webhooks.
+- **Webhook:** set **Active**, **URL** = `https://<your-host>/webhook`, and a
+  strong random **Secret** (save it — it becomes `webhookSecret`).
+- **Generate a private key** and download the `.pem` (save it).
+- Note the App's **Client ID**.
+
+### 2. Install the App on your repositories
+
+Install the App on the **dependency** repos whose tags should trigger Renovate.
+Only installed repos deliver events and are readable — App-installed + a
+`renovate.trigger.json` present is the opt-in.
+
+### 3. Deploy with Helm
 
 Install into the **same namespace as the Renovate CronJob** — the service is
-co-located with it and clones its `jobTemplate`, so the CronJob namespace is just
-the release namespace.
-
-The chart is published as an OCI artifact to GHCR
-(`ghcr.io/caseycs/charts/renovate-trigger`); the image lives at
-`ghcr.io/caseycs/renovate-trigger`. Install a released version directly:
+co-located with it, so the CronJob namespace is just the release namespace. The
+chart and image are published to GHCR (`ghcr.io/caseycs/charts/renovate-trigger`
+and `ghcr.io/caseycs/renovate-trigger`):
 
 ```sh
 helm install renovate-trigger oci://ghcr.io/caseycs/charts/renovate-trigger \
@@ -53,9 +73,26 @@ helm install renovate-trigger oci://ghcr.io/caseycs/charts/renovate-trigger \
   --set webhookSecret="$WEBHOOK_SECRET"
 ```
 
+- `config.cronjob.name` — the source Renovate CronJob (namespace defaults to the
+  release namespace; override with `config.cronjob.namespace` only if it differs).
+- `github.clientId` — the App Client ID from step 1.
+- `github.privateKey` — the `.pem` from step 1 (via `--set-file`).
+- `webhookSecret` — the webhook secret from step 1.
+
 To install from a local checkout instead, swap the chart reference for `./chart`.
 
-Then point the GitHub App's webhook URL at the Service (via your Ingress).
+The service starts only if all of the above are valid — a missing/unparseable
+key or an unreachable CronJob crash-loops the pod at boot (fail-loud by design).
+
+### 4. Point the webhook at the service
+
+Expose the `Service` (port 8080, path `/webhook`) through your Ingress at the
+host you used for the App's webhook URL in step 1.
+
+### 5. Opt repositories in
+
+For each dependency repo, add a `renovate.trigger.json` on its default branch —
+see [Opting a repository in](#opting-a-repository-in) above.
 
 ## Configuration
 
