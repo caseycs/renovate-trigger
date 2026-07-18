@@ -3,11 +3,6 @@
   "type": "object",
   "required": ["image", "config"],
   "properties": {
-    "replicaCount": {
-      "type": "integer",
-      "minimum": 1,
-      "default": 1
-    },
     "image": {
       "type": "object",
       "required": ["repository"],
@@ -45,7 +40,7 @@
         },
         "cronjob": {
           "type": "object",
-          "required": ["name", "namespace"],
+          "required": ["name"],
           "properties": {
             "name": {
               "type": "string",
@@ -53,17 +48,22 @@
             },
             "namespace": {
               "type": "string",
-              "minLength": 1
+              "description": "Source CronJob namespace. Defaults to the release namespace."
             }
           }
+        }
+      }
+    },
+    "github": {
+      "type": "object",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "GitHub App client ID (JWT issuer)."
         },
-        "repos": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "default": []
+        "privateKey": {
+          "type": "string",
+          "description": "GitHub App private key (PEM). Provide via --set-file."
         }
       }
     },
@@ -79,15 +79,6 @@
         },
         "name": {
           "type": "string"
-        }
-      }
-    },
-    "rbac": {
-      "type": "object",
-      "properties": {
-        "jobNamespace": {
-          "type": "string",
-          "description": "Namespace where CronJobs/Jobs live. Defaults to release namespace."
         }
       }
     },

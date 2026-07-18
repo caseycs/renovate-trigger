@@ -1,8 +1,10 @@
-replicaCount: 1
-
 image:
   repository: ghcr.io/caseycs/renovate-trigger
   pullPolicy: IfNotPresent
+
+# The single-replica invariant (ADR-0001) is enforced in the Deployment
+# (replicas: 1 + Recreate); there is no replicaCount to change — in-memory
+# batching and mutual exclusion require exactly one pod.
 
 config:
   listenAddr: ":8080"
@@ -10,13 +12,22 @@ config:
   batchWindowSeconds: 30
   cronjob:
     name: "renovate"
-    namespace: "renovate"
-  repos: []
+    # Namespace of the source Renovate CronJob. Defaults to the release
+    # namespace — renovate-trigger is installed alongside the CronJob. Set only
+    # to override.
+    namespace: ""
+
+# GitHub App that delivers webhooks and reads each repo's renovate.trigger.json.
+github:
+  clientId: ""
+  # PEM private key. Provide with: --set-file github.privateKey=./app-key.pem
+  privateKey: ""
+
+# GitHub App webhook secret (HMAC-SHA256 validation).
+webhookSecret: ""
 
 serviceAccount:
   create: true
-
-rbac: {}
 
 service:
   type: ClusterIP

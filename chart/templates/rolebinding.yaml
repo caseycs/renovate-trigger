@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ include "renovate-trigger.fullname" . }}
-  namespace: {{ .Values.rbac.jobNamespace | default .Release.Namespace }}
+  namespace: {{ .Values.config.cronjob.namespace | default .Release.Namespace }}
   labels:
     {{- include "renovate-trigger.labels" . | nindent 4 }}
 roleRef:

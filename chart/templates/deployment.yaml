@@ -5,7 +5,12 @@ metadata:
   labels:
     {{- include "renovate-trigger.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  # Single-replica invariant (ADR-0001): in-memory batching and mutual exclusion
+  # are correct only with exactly one pod. Recreate ensures a rollout never
+  # briefly runs two collecting pods.
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "renovate-trigger.selectorLabels" . | nindent 6 }}
@@ -37,18 +42,20 @@ spec:
             - name: RT_CRONJOB_NAME
               value: {{ .Values.config.cronjob.name | quote }}
             - name: RT_CRONJOB_NAMESPACE
-              value: {{ .Values.config.cronjob.namespace | quote }}
-            {{- if .Values.config.repos }}
-            - name: RT_REPOS
-              value: {{ join "," .Values.config.repos | quote }}
-            {{- end }}
-            {{- if .Values.webhookSecret }}
+              value: {{ .Values.config.cronjob.namespace | default .Release.Namespace | quote }}
+            - name: RT_GITHUB_CLIENT_ID
+              value: {{ .Values.github.clientId | quote }}
+            - name: RT_GITHUB_APP_PRIVATE_KEY_FILE
+              value: /etc/renovate-trigger/github-app.pem
             - name: RT_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "renovate-trigger.fullname" . }}
                   key: webhook-secret
-            {{- end }}
+          volumeMounts:
+            - name: github-app-key
+              mountPath: /etc/renovate-trigger
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /healthz
@@ -69,3 +76,10 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: github-app-key
+          secret:
+            secretName: {{ include "renovate-trigger.fullname" . }}
+            items:
+              - key: github-app-private-key
+                path: github-app.pem
