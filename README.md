@@ -103,18 +103,22 @@ the [configuration reference](./REQUIREMENTS.md#configuration-reference).
 ## Releasing
 
 Commit to `main` freely; releases are cut on demand.
-[Release Drafter](https://github.com/release-drafter/release-drafter) keeps a
-**draft GitHub Release** continuously up to date — categorising merged PRs and
-resolving the next `vX.Y.Z` from their labels (Conventional-Commit titles are
-auto-labelled). When you want to ship, **publish that draft release** (tweak the
-tag first if you want a different bump). Publishing fires the `release` workflow,
-which builds the multi-arch image and packages/pushes the Helm chart to GHCR
-under one shared version (image tag = chart `version` = `appVersion`, taken from
-the release tag).
+[release-please](https://github.com/googleapis/release-please) reads the
+Conventional-Commit history and keeps an open **release PR** that bumps
+`chart/Chart.yaml` (`version` + `appVersion`) and the changelog to the next
+`vX.Y.Z`. Your feature/fix PRs merge to `main` as usual; the release PR just
+accumulates the pending bump until you want it.
 
-The chart in git keeps a placeholder `0.1.0`; the published artifacts are
-stamped with the release tag at package time, so no in-repo version bump is
-needed.
+**Merging the release PR is the "cut a release now" action.** release-please
+tags that merge commit and creates the GitHub Release, then — gated in the same
+`release` workflow run — the multi-arch image and the Helm chart are built from
+that tagged commit and pushed to GHCR under one shared version (image tag =
+chart `version` = `appVersion`).
+
+Because the bump lands *in* the tagged commit, the git tag, `chart/Chart.yaml`,
+and the published artifacts are all consistent — see
+[`docs/research/release-automation-consistency.md`](./docs/research/release-automation-consistency.md)
+for why this ordering matters.
 
 For a local multi-arch build (dev only; releases go through CI):
 
