@@ -198,7 +198,7 @@ export const Showcase: React.FC = () => {
         activeFrom={380}
         activeTo={460}
       >
-        <Chip label="PR opened · bump image → v1.4.0" appearAt={382} tone="accept" />
+        <Chip label="PR opened · lib-foo → v1.4.0 · lib-bar → v2.1.0" appearAt={382} tone="accept" />
       </Box>
 
       {/* Cluster: renovate-trigger + the Renovate run */}
