@@ -260,8 +260,9 @@ flowchart TD
 
 ## 9. Deployment Topology (Helm)
 
-`chart/` — single replica, least-privilege RBAC scoped to the CronJob namespace,
-Secrets for the webhook secret and the App private key.
+`chart/` — single replica, least-privilege RBAC scoped to the CronJob namespace.
+GitHub App credentials come from a single existing Secret (not created by the
+chart; e.g. provisioned by External Secrets Operator).
 
 ```mermaid
 flowchart LR
@@ -270,8 +271,7 @@ flowchart LR
             DEP["Deployment<br/>replicas:1, Recreate<br/>(nonRoot, RO rootfs,<br/>drop ALL caps)"]
             SVC[Service :8080]
             SA[ServiceAccount]
-            SEC1["Secret<br/>webhook-secret → RT_WEBHOOK_SECRET"]
-            SEC2["Secret<br/>App private key PEM (mounted)"]
+            SEC["Existing Secret (not chart-created)<br/>client ID + private key + webhook secret"]
             RB[RoleBinding]
         end
         subgraph nscron[CronJob namespace]
@@ -281,8 +281,7 @@ flowchart LR
         end
     end
     GHAPP[GitHub App] --> SVC --> DEP
-    SEC1 --> DEP
-    SEC2 --> DEP
+    SEC --> DEP
     DEP -- "read contents" --> GHAPP
     SA --> DEP
     SA --> RB --> ROLE

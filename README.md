@@ -33,6 +33,10 @@ A tag on a repo with no such file (or without the App installed) is ignored.
   is what this service clones for each run.
 - Cluster access (`kubectl`/`helm`) to the CronJob's namespace.
 - A way to expose the service's `/webhook` endpoint to GitHub (an Ingress).
+- An **existing Kubernetes Secret** with the App credentials — the chart does
+  **not** create one; provision it out of band (e.g. with External Secrets
+  Operator). A single Secret with three keys: the App **client ID**, the App
+  **private key** (PEM), and the **webhook secret**.
 
 ### 1. Create a GitHub App
 
@@ -46,9 +50,12 @@ user-owned):
   branch) creation; the service ignores branches and acts only on tags. There is
   **one** App-level webhook — you never configure per-repo webhooks.
 - **Webhook:** set **Active**, **URL** = `https://<your-host>/webhook`, and a
-  strong random **Secret** (save it — it becomes `webhookSecret`).
-- **Generate a private key** and download the `.pem` (save it).
+  strong random **Secret**.
+- **Generate a private key** and download the `.pem`.
 - Note the App's **Client ID**.
+
+Store these three — **client ID**, **private key** (PEM), and **webhook secret**
+— in the existing credentials Secret (see step 3).
 
 ### 2. Install the App on your repositories
 
@@ -56,40 +63,59 @@ Install the App on the **dependency** repos whose tags should trigger Renovate.
 Only installed repos deliver events and are readable — App-installed + a
 `renovate.trigger.json` present is the opt-in.
 
-### 3. Deploy with Helm
+### 3. Configure and deploy
 
-Install into the **same namespace as the Renovate CronJob** — the service is
-co-located with it, so the CronJob namespace is just the release namespace. The
-chart and image are published to GHCR (`ghcr.io/caseycs/charts/renovate-trigger`
-and `ghcr.io/caseycs/renovate-trigger`):
+Put your settings in a values file — `renovate-trigger.values.yaml`. Install into
+the **same namespace as the Renovate CronJob**; the service is co-located with
+it, so the CronJob namespace is just the release namespace.
+
+```yaml
+config:
+  cronjob:
+    name: renovate            # source Renovate CronJob (its jobTemplate is cloned)
+    # namespace: ...          # only if it differs from the release namespace
+
+# Existing Secret holding the App credentials (created out of band, e.g. via
+# External Secrets Operator) — one Secret, three keys. Override the key names to
+# match yours.
+existingSecret:
+  name: renovate-trigger
+  clientIdKey: github-client-id
+  privateKeyKey: github-app-private-key
+  webhookSecretKey: webhook-secret
+
+# Expose /webhook at the host used for the App's webhook URL (step 1).
+# Enable ONE of the following, or wire your own routing instead.
+ingress:
+  enabled: true
+  host: renovate-trigger.example.com
+  className: nginx
+  tls:
+    enabled: true
+
+# Traefik alternative (leave `ingress` disabled if you use this):
+# ingressRoute:
+#   enabled: true
+#   host: renovate-trigger.example.com
+#   entryPoint: websecure
+#   labels:
+#     nobi.life/traefik-scope: external
+```
+
+Then install — the chart and image are published to GHCR:
 
 ```sh
 helm install renovate-trigger oci://ghcr.io/caseycs/charts/renovate-trigger \
-  --version 0.1.0 \
-  --namespace renovate \
-  --set config.cronjob.name=renovate \
-  --set github.clientId=Iv23liXXXXXXXXXXXXXX \
-  --set-file github.privateKey=./renovate-trigger.private-key.pem \
-  --set webhookSecret="$WEBHOOK_SECRET"
+  --version 0.1.0 --namespace renovate \
+  -f renovate-trigger.values.yaml
 ```
-
-- `config.cronjob.name` — the source Renovate CronJob (namespace defaults to the
-  release namespace; override with `config.cronjob.namespace` only if it differs).
-- `github.clientId` — the App Client ID from step 1.
-- `github.privateKey` — the `.pem` from step 1 (via `--set-file`).
-- `webhookSecret` — the webhook secret from step 1.
 
 To install from a local checkout instead, swap the chart reference for `./chart`.
 
-The service starts only if all of the above are valid — a missing/unparseable
-key or an unreachable CronJob crash-loops the pod at boot (fail-loud by design).
+The service starts only if the config is valid — a missing key in the Secret or
+an unreachable CronJob crash-loops the pod at boot (fail-loud by design).
 
-### 4. Point the webhook at the service
-
-Expose the `Service` (port 8080, path `/webhook`) through your Ingress at the
-host you used for the App's webhook URL in step 1.
-
-### 5. Opt repositories in
+### 4. Opt repositories in
 
 For each dependency repo, add a `renovate.trigger.json` on its default branch —
 see [Opting a repository in](#opting-a-repository-in) above.

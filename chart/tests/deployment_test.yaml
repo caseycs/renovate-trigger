@@ -67,15 +67,20 @@ tests:
             name: RT_CRONJOB_NAMESPACE
             value: renovate
 
-  - it: sets RT_GITHUB_CLIENT_ID from github.clientId
+  - it: sources RT_GITHUB_CLIENT_ID from the existing Secret
     set:
-      github.clientId: Iv23liABC
+      existingSecret:
+        name: rt-creds
+        clientIdKey: client-id
+        privateKeyKey: github-app-private-key
+        webhookSecretKey: webhook-secret
     asserts:
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: RT_GITHUB_CLIENT_ID
-            value: Iv23liABC
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RT_GITHUB_CLIENT_ID")].valueFrom.secretKeyRef.name
+          value: rt-creds
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RT_GITHUB_CLIENT_ID")].valueFrom.secretKeyRef.key
+          value: client-id
 
   - it: never sets the removed RT_REPOS env
     set:
@@ -88,18 +93,28 @@ tests:
             name: RT_REPOS
           any: true
 
-  - it: always sources RT_WEBHOOK_SECRET from the Secret
+  - it: sources RT_WEBHOOK_SECRET from the existing Secret
+    set:
+      existingSecret:
+        name: rt-creds
+        clientIdKey: github-client-id
+        privateKeyKey: github-app-private-key
+        webhookSecretKey: hook-secret
     asserts:
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: RT_WEBHOOK_SECRET
-          any: true
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RT_WEBHOOK_SECRET")].valueFrom.secretKeyRef.name
+          value: rt-creds
       - equal:
           path: spec.template.spec.containers[0].env[?(@.name=="RT_WEBHOOK_SECRET")].valueFrom.secretKeyRef.key
-          value: webhook-secret
+          value: hook-secret
 
-  - it: mounts the App private key from the Secret
+  - it: mounts the App private key from the existing Secret
+    set:
+      existingSecret:
+        name: rt-creds
+        clientIdKey: github-client-id
+        privateKeyKey: app-key
+        webhookSecretKey: webhook-secret
     asserts:
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
@@ -108,11 +123,11 @@ tests:
             mountPath: /etc/renovate-trigger
             readOnly: true
       - equal:
-          path: spec.template.spec.volumes[0].name
-          value: github-app-key
+          path: spec.template.spec.volumes[0].secret.secretName
+          value: rt-creds
       - equal:
           path: spec.template.spec.volumes[0].secret.items[0].key
-          value: github-app-private-key
+          value: app-key
       - equal:
           path: spec.template.spec.volumes[0].secret.items[0].path
           value: github-app.pem
