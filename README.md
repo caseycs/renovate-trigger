@@ -105,11 +105,13 @@ ingress:
 
 Then install — the chart and image are published to GHCR:
 
+<!-- x-release-please-start-version -->
 ```sh
 helm install renovate-trigger oci://ghcr.io/caseycs/charts/renovate-trigger \
   --version 0.1.0 --namespace renovate \
   -f renovate-trigger.values.yaml
 ```
+<!-- x-release-please-end -->
 
 To install from a local checkout instead, swap the chart reference for `./chart`.
 
