@@ -135,8 +135,10 @@ decisions behind this shape.
 
 ### NFR-5: Deployment
 - Helm chart with: Deployment (`replicas: 1`, `Recreate`), Service,
-  ServiceAccount, Role, RoleBinding, and Secrets for the webhook secret and the
-  App private key.
+  ServiceAccount, Role, RoleBinding. The chart does **not** create a Secret;
+  credentials (client ID, private key, webhook secret) are read from a single
+  existing Secret provisioned out of band (e.g. External Secrets Operator), with
+  configurable key names.
 - Multi-stage Docker build: `golang:1.24-alpine` builder,
   `distroless/static-debian12:nonroot` runtime.
 - Multi-arch image (`linux/amd64`, `linux/arm64` via `docker buildx`): the

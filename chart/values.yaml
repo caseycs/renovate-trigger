@@ -17,14 +17,15 @@ config:
     # to override.
     namespace: ""
 
-# GitHub App that delivers webhooks and reads each repo's renovate.trigger.json.
-github:
-  clientId: ""
-  # PEM private key. Provide with: --set-file github.privateKey=./app-key.pem
-  privateKey: ""
-
-# GitHub App webhook secret (HMAC-SHA256 validation).
-webhookSecret: ""
+# GitHub App credentials are read from an EXISTING Secret — the chart never
+# creates one. Provision it out of band (e.g. External Secrets Operator) with the
+# three keys below: the App client ID, the App private key (PEM), and the webhook
+# secret.
+existingSecret:
+  name: renovate-trigger
+  clientIdKey: github-client-id
+  privateKeyKey: github-app-private-key
+  webhookSecretKey: webhook-secret
 
 serviceAccount:
   create: true

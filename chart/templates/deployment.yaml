@@ -44,14 +44,17 @@ spec:
             - name: RT_CRONJOB_NAMESPACE
               value: {{ .Values.config.cronjob.namespace | default .Release.Namespace | quote }}
             - name: RT_GITHUB_CLIENT_ID
-              value: {{ .Values.github.clientId | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret.name }}
+                  key: {{ .Values.existingSecret.clientIdKey }}
             - name: RT_GITHUB_APP_PRIVATE_KEY_FILE
               value: /etc/renovate-trigger/github-app.pem
             - name: RT_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "renovate-trigger.fullname" . }}
-                  key: webhook-secret
+                  name: {{ .Values.existingSecret.name }}
+                  key: {{ .Values.existingSecret.webhookSecretKey }}
           volumeMounts:
             - name: github-app-key
               mountPath: /etc/renovate-trigger
@@ -79,7 +82,7 @@ spec:
       volumes:
         - name: github-app-key
           secret:
-            secretName: {{ include "renovate-trigger.fullname" . }}
+            secretName: {{ .Values.existingSecret.name }}
             items:
-              - key: github-app-private-key
+              - key: {{ .Values.existingSecret.privateKeyKey }}
                 path: github-app.pem
