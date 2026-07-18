@@ -126,28 +126,3 @@ All operational config is via `RT_*` environment variables (set by the chart);
 the dependency graph itself lives in per-repo `renovate.trigger.json` files. See
 the [configuration reference](./REQUIREMENTS.md#configuration-reference).
 
-## Releasing
-
-Commit to `main` freely; releases are cut on demand.
-[release-please](https://github.com/googleapis/release-please) reads the
-Conventional-Commit history and keeps an open **release PR** that bumps
-`chart/Chart.yaml` (`version` + `appVersion`) and the changelog to the next
-`vX.Y.Z`. Your feature/fix PRs merge to `main` as usual; the release PR just
-accumulates the pending bump until you want it.
-
-**Merging the release PR is the "cut a release now" action.** release-please
-tags that merge commit and creates the GitHub Release, then — gated in the same
-`release` workflow run — the multi-arch image and the Helm chart are built from
-that tagged commit and pushed to GHCR under one shared version (image tag =
-chart `version` = `appVersion`).
-
-Because the bump lands *in* the tagged commit, the git tag, `chart/Chart.yaml`,
-and the published artifacts are all consistent — see
-[`docs/research/release-automation-consistency.md`](./docs/research/release-automation-consistency.md)
-for why this ordering matters.
-
-For a local multi-arch build (dev only; releases go through CI):
-
-```sh
-docker buildx build --platform linux/amd64,linux/arm64 -t renovate-trigger:latest .
-```

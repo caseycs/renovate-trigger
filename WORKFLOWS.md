@@ -200,7 +200,7 @@ flowchart TD
     TOK --> FETCH["GET contents<br/>renovate.trigger.json @ default branch"]
     FETCH -->|404| DBG["DEBUG opt-out, skip"]
     FETCH -->|error| WARN2["WARN, drop source"]
-    FETCH -->|ok| PARSE{parse JSON<br/>tags[]?}
+    FETCH -->|ok| PARSE{"parse JSON<br/>tags[] ?"}
     PARSE -->|malformed| WARN3["WARN, drop source"]
     PARSE -->|ok| ENTRIES["for each dependent:<br/>valid owner/repo? → add<br/>else WARN skip"]
     ENTRIES --> ACC[accumulate into union set]
