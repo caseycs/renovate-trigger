@@ -39,14 +39,21 @@ Install into the **same namespace as the Renovate CronJob** — the service is
 co-located with it and clones its `jobTemplate`, so the CronJob namespace is just
 the release namespace.
 
+The chart is published as an OCI artifact to GHCR
+(`ghcr.io/caseycs/charts/renovate-trigger`); the image lives at
+`ghcr.io/caseycs/renovate-trigger`. Install a released version directly:
+
 ```sh
-helm install renovate-trigger ./chart \
+helm install renovate-trigger oci://ghcr.io/caseycs/charts/renovate-trigger \
+  --version 0.1.0 \
   --namespace renovate \
   --set config.cronjob.name=renovate \
   --set github.clientId=Iv23liXXXXXXXXXXXXXX \
   --set-file github.privateKey=./renovate-trigger.private-key.pem \
   --set webhook.secret="$WEBHOOK_SECRET"
 ```
+
+To install from a local checkout instead, swap the chart reference for `./chart`.
 
 Then point the GitHub App's webhook URL at the Service (via your Ingress).
 
@@ -62,9 +69,23 @@ All operational config is via `RT_*` environment variables (set by the chart);
 the dependency graph itself lives in per-repo `renovate.trigger.json` files. See
 the [configuration reference](./REQUIREMENTS.md#configuration-reference).
 
-## Build
+## Releasing
 
-Multi-arch image, cross-compiled on the native host arch (no emulation):
+Commit to `main` freely; releases are cut on demand.
+[Release Drafter](https://github.com/release-drafter/release-drafter) keeps a
+**draft GitHub Release** continuously up to date — categorising merged PRs and
+resolving the next `vX.Y.Z` from their labels (Conventional-Commit titles are
+auto-labelled). When you want to ship, **publish that draft release** (tweak the
+tag first if you want a different bump). Publishing fires the `release` workflow,
+which builds the multi-arch image and packages/pushes the Helm chart to GHCR
+under one shared version (image tag = chart `version` = `appVersion`, taken from
+the release tag).
+
+The chart in git keeps a placeholder `0.1.0`; the published artifacts are
+stamped with the release tag at package time, so no in-repo version bump is
+needed.
+
+For a local multi-arch build (dev only; releases go through CI):
 
 ```sh
 docker buildx build --platform linux/amd64,linux/arm64 -t renovate-trigger:latest .

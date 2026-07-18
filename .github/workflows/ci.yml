@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  helm:
+    name: helm lint & template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - name: helm lint
+        run: helm lint chart
+      - name: helm template
+        run: |
+          helm template renovate-trigger chart \
+            --set config.cronjob.name=renovate \
+            --set config.cronjob.namespace=renovate
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
+      - name: helm unittest
+        run: helm unittest chart
+
+  image:
+    name: docker build (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
