@@ -124,6 +124,87 @@ func TestCreateJobForRepos(t *testing.T) {
 	}
 }
 
+func TestCreateJobForReposSetsAutodiscoverFalse(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	if err := createFakeCronJob(client, "renovate", "renovate"); err != nil {
+		t.Fatal(err)
+	}
+
+	jc := NewJobCreator(client, "renovate", "renovate", testLogger())
+	if _, err := jc.CreateJobForRepos(context.Background(), []string{"org/repo"}); err != nil {
+		t.Fatalf("CreateJobForRepos error: %v", err)
+	}
+
+	jobs, err := client.BatchV1().Jobs("renovate").List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	container := jobs.Items[0].Spec.Template.Spec.Containers[0]
+
+	var found bool
+	for _, e := range container.Env {
+		if e.Name == "RENOVATE_AUTODISCOVER" {
+			found = true
+			if e.Value != "false" {
+				t.Errorf("RENOVATE_AUTODISCOVER = %q, want false", e.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("RENOVATE_AUTODISCOVER env var should be set on the job")
+	}
+}
+
+func TestCreateJobForReposOverridesAutodiscover(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	// CronJob template explicitly enables autodiscover; the job must flip it off.
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "renovate",
+			Namespace: "renovate",
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule: "0 3 * * *",
+			JobTemplate: batchv1.JobTemplateSpec{
+				Spec: batchv1.JobSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "renovate",
+									Image: "renovate/renovate:latest",
+									Env: []corev1.EnvVar{
+										{Name: "RENOVATE_AUTODISCOVER", Value: "true"},
+									},
+								},
+							},
+							RestartPolicy: corev1.RestartPolicyNever,
+						},
+					},
+				},
+			},
+		},
+	}
+	if _, err := client.BatchV1().CronJobs("renovate").Create(context.Background(), cronJob, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	jc := NewJobCreator(client, "renovate", "renovate", testLogger())
+	if _, err := jc.CreateJobForRepos(context.Background(), []string{"org/repo"}); err != nil {
+		t.Fatalf("CreateJobForRepos error: %v", err)
+	}
+
+	jobs, _ := client.BatchV1().Jobs("renovate").List(context.Background(), metav1.ListOptions{})
+	container := jobs.Items[0].Spec.Template.Spec.Containers[0]
+
+	for _, e := range container.Env {
+		if e.Name == "RENOVATE_AUTODISCOVER" && e.Value != "false" {
+			t.Errorf("RENOVATE_AUTODISCOVER = %q, want false", e.Value)
+		}
+	}
+}
+
 func TestCreateJobForReposCronJobNotFound(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	jc := NewJobCreator(client, "nonexistent", "renovate", testLogger())
