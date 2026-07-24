@@ -9,6 +9,14 @@ permissions:
   contents: read
 
 jobs:
+  go-version:
+    name: go version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: check go.mod and Dockerfile agree
+        run: ./hack/check-go-version.sh
+
   helm:
     name: helm lint & template
     runs-on: ubuntu-latest
