@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.2](https://github.com/caseycs/renovate-trigger/compare/v0.2.1...v0.2.2) (2026-07-24)
+
+
+### Miscellaneous Chores
+
+* add dependabot for dockerfile ([da9b310](https://github.com/caseycs/renovate-trigger/commit/da9b310edb51367a41793f7ab244dc01bfb081ff))
+* add dependabot for go modules ([14b0a19](https://github.com/caseycs/renovate-trigger/commit/14b0a19a96d85b91f8241f97be355250312a21e9))
+* bump golang from 1.25-alpine to 1.26-alpine ([#22](https://github.com/caseycs/renovate-trigger/issues/22)) ([9ef639b](https://github.com/caseycs/renovate-trigger/commit/9ef639b7c5ccb2552d2dad0556336b4b1c0a985f))
+* bump the go-dependencies group across 1 directory with 2 updates ([#23](https://github.com/caseycs/renovate-trigger/issues/23)) ([4386f1a](https://github.com/caseycs/renovate-trigger/commit/4386f1a76491cb36a848e910b504934c6c02327a))
+* treat chore commits as releasable in release-please ([dc83cd2](https://github.com/caseycs/renovate-trigger/commit/dc83cd27bb635a805a5bb749a193ce182d254655))
+
 ## [0.2.1](https://github.com/caseycs/renovate-trigger/compare/v0.2.0...v0.2.1) (2026-07-24)
 
 
