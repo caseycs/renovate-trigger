@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/caseycs/renovate-trigger/compare/v0.3.0...v0.3.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **deps:** bump x/net, x/text and Go to 1.26.5 for CVE fixes ([#27](https://github.com/caseycs/renovate-trigger/issues/27)) ([de068f6](https://github.com/caseycs/renovate-trigger/commit/de068f66f0d10d3e541924116152b5d74b407e5f))
+
 ## [0.3.0](https://github.com/caseycs/renovate-trigger/compare/v0.2.2...v0.3.0) (2026-07-24)
 
 
