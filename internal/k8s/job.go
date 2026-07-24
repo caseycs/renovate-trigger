@@ -64,6 +64,9 @@ func (jc *JobCreator) CreateJobForRepos(ctx context.Context, repos []string) (st
 	containers := make([]corev1.Container, len(jobSpec.Template.Spec.Containers))
 	for i, c := range jobSpec.Template.Spec.Containers {
 		c.Env = overrideEnv(c.Env, "RENOVATE_REPOSITORIES", string(repoJSON))
+		// Force autodiscover off so Renovate only touches the repos we
+		// explicitly pass, regardless of what the CronJob template sets.
+		c.Env = overrideEnv(c.Env, "RENOVATE_AUTODISCOVER", "false")
 		containers[i] = c
 	}
 	jobSpec.Template.Spec.Containers = containers
