@@ -27,17 +27,37 @@ jobs:
       - name: helm unittest
         run: helm unittest chart
 
-  image:
-    name: docker build (no push)
+  # The e2e job builds the image once (with the gha build cache) and then
+  # actually runs it — a strict superset of a "does it build" check, so there
+  # is no separate no-push build job.
+  e2e:
+    name: e2e (build, kind install & run)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
       - uses: docker/setup-buildx-action@v4
-      - name: build
+      # Single build, cached, loaded into the local docker daemon. The e2e
+      # script then only `kind load`s and drives install + assertions
+      # (BUILD_IMAGE=0), so the image is never built twice.
+      - name: Build image (amd64, cached)
         uses: docker/build-push-action@v7
         with:
           context: .
+          load: true
           platforms: linux/amd64
-          push: false
+          tags: ghcr.io/caseycs/renovate-trigger:e2e
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # Provisions the kind cluster and the `kind` CLI.
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: renovate-trigger-e2e
+      - name: Install chart and verify it runs
+        env:
+          CLUSTER: renovate-trigger-e2e
+          CREATE_CLUSTER: "0" # kind-action owns the cluster lifecycle
+          BUILD_IMAGE: "0" # already built above (with cache)
+          IMAGE_TAG: e2e
+        run: ./hack/e2e.sh
