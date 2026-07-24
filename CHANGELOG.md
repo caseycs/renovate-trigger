@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/caseycs/renovate-trigger/compare/v0.2.2...v0.3.0) (2026-07-24)
+
+
+### Features
+
+* force RENOVATE_AUTODISCOVER=false on triggered jobs ([#25](https://github.com/caseycs/renovate-trigger/issues/25)) ([d6ccb37](https://github.com/caseycs/renovate-trigger/commit/d6ccb3767ebb41d37f7838ba3b818bc0f40acbfb))
+
 ## [0.2.2](https://github.com/caseycs/renovate-trigger/compare/v0.2.1...v0.2.2) (2026-07-24)
 
 
