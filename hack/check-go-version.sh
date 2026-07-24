@@ -2,11 +2,12 @@
 #
 # Guard against the Go version drifting between go.mod and the Dockerfile.
 #
-# go.mod pins a full version ("go 1.25.5") — that's the language/toolchain
-# floor. The Dockerfile builder pins the image to major.minor
-# ("golang:1.25-alpine") so it tracks the latest patch automatically. So we
-# can't compare the strings verbatim; we compare the major.minor, which is the
-# part that actually has to agree for the build to use the right Go release.
+# go.mod pins a full version ("go 1.26.5") — that's the language/toolchain
+# floor. The Dockerfile builder pins the image to a full patch too
+# ("golang:1.26.5-alpine") so the build is reproducible and patch bumps are an
+# explicit, reviewable change. We still only compare major.minor: that is the
+# part that has to agree for the build to use the right Go release, and it
+# keeps this check working if either side is ever loosened to major.minor.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
