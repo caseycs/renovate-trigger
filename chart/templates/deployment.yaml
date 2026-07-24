@@ -22,6 +22,10 @@ spec:
       serviceAccountName: {{ include "renovate-trigger.serviceAccountName" . }}
       securityContext:
         runAsNonRoot: true
+        # Numeric UID/GID of the distroless "nonroot" user. Kubernetes cannot
+        # verify a non-numeric image USER against runAsNonRoot, so pin it here.
+        runAsUser: 65532
+        runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:

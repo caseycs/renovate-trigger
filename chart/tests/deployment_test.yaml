@@ -138,6 +138,12 @@ tests:
           path: spec.template.spec.securityContext.runAsNonRoot
           value: true
       - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 65532
+      - equal:
+          path: spec.template.spec.securityContext.runAsGroup
+          value: 65532
+      - equal:
           path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
           value: true
       - equal:
