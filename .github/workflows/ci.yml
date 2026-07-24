@@ -41,3 +41,22 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  e2e:
+    name: e2e (kind install & run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - uses: docker/setup-buildx-action@v4
+      # Provisions the kind cluster and the `kind` CLI; the e2e script builds
+      # the image, loads it into THIS cluster, and drives install + assertions.
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: renovate-trigger-e2e
+      - name: Install chart and verify it runs
+        env:
+          CLUSTER: renovate-trigger-e2e
+          CREATE_CLUSTER: "0" # kind-action owns the cluster lifecycle
+        run: ./hack/e2e.sh
