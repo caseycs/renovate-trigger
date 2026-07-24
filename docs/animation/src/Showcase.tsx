@@ -127,33 +127,15 @@ export const Showcase: React.FC = () => {
         height={height}
       />
 
-      {/* Read renovate.trigger.json: renovate-trigger fans back into each source
-          repo. Origin sits just above the trigger's top-left so both dashed
-          lines skim above repo2 rather than cutting through it. */}
-      <Arrow
-        id="read2"
-        x1={trigger.x}
-        y1={trigger.y - 8}
-        x2={repo2.x + repo2.w / 2}
-        y2={repo2.y}
-        label="read renovate.trigger.json"
-        labelX={480}
-        labelY={96}
-        labelAnchor="middle"
-        appearAt={205}
-        flowFrom={226}
-        flowTo={266}
-        width={width}
-        height={height}
-        color={theme.accent}
-        dashed
-      />
+      {/* Read renovate.trigger.json: renovate-trigger reads back from each source
+          repo. Same routing as the webhook arrows, source & target reversed
+          (trigger → repo), in accent so they stay visible over the grey webhooks. */}
       <Arrow
         id="read1"
         x1={trigger.x}
-        y1={trigger.y - 8}
-        x2={repo1.x + repo1.w / 2}
-        y2={repo1.y}
+        y1={trigger.y + 70}
+        x2={repo1.x + repo1.w}
+        y2={repo1.y + repo1.h / 2}
         label=""
         labelX={0}
         labelY={0}
@@ -163,7 +145,22 @@ export const Showcase: React.FC = () => {
         width={width}
         height={height}
         color={theme.accent}
-        dashed
+      />
+      <Arrow
+        id="read2"
+        x1={trigger.x}
+        y1={trigger.y + 110}
+        x2={repo2.x + repo2.w}
+        y2={repo2.y + repo2.h / 2}
+        label=""
+        labelX={0}
+        labelY={0}
+        appearAt={205}
+        flowFrom={226}
+        flowTo={266}
+        width={width}
+        height={height}
+        color={theme.accent}
       />
 
       <Arrow
