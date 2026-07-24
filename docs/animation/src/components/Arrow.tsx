@@ -4,6 +4,9 @@ import { theme } from '../theme';
 
 // A straight arrow from (x1,y1) to (x2,y2) with a label and a token that flows
 // along it during [flowFrom, flowTo]. Rendered on a full-canvas SVG overlay.
+// `color` overrides the line/head hue (defaults to the neutral stroke); `dashed`
+// distinguishes a "read" edge (renovate-trigger reaching back into a repo) from
+// the solid webhook/flow edges.
 export const Arrow: React.FC<{
   id: string;
   x1: number;
@@ -19,6 +22,8 @@ export const Arrow: React.FC<{
   flowTo: number;
   width: number;
   height: number;
+  color?: string;
+  dashed?: boolean;
 }> = ({
   id,
   x1,
@@ -34,6 +39,8 @@ export const Arrow: React.FC<{
   flowTo,
   width,
   height,
+  color = theme.stroke,
+  dashed = false,
 }) => {
   const frame = useCurrentFrame();
   const lineOpacity = interpolate(frame, [appearAt, appearAt + 12], [0, 1], {
@@ -56,7 +63,7 @@ export const Arrow: React.FC<{
     >
       <defs>
         <marker id={`head-${id}`} markerWidth="12" markerHeight="12" refX="8" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 Z" fill={theme.stroke} />
+          <path d="M0,0 L8,4 L0,8 Z" fill={color} />
         </marker>
       </defs>
       <line
@@ -64,8 +71,9 @@ export const Arrow: React.FC<{
         y1={y1}
         x2={x2}
         y2={y2}
-        stroke={theme.stroke}
+        stroke={color}
         strokeWidth={3}
+        strokeDasharray={dashed ? '7 6' : undefined}
         opacity={lineOpacity}
         markerEnd={`url(#head-${id})`}
       />

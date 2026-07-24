@@ -42,9 +42,11 @@ const GroupBox: React.FC<{
   </div>
 );
 
-// Two dependency repos (GitHub) get tagged → batched in the cluster
-// (renovate-trigger: batch → gate → resolve) → a one-off Renovate Job → a PR
-// back in the Argo CD (dependent) repo on GitHub. Loops.
+// Two dependency repos (GitHub) get tagged → batched in the cluster. Once the
+// window closes and the gate is clear, renovate-trigger reaches back into *each*
+// source repo to read its renovate.trigger.json (the dependents declaration),
+// dedups them, and clones the Renovate CronJob into a one-off Job → a PR back in
+// the Argo CD (dependent) repo on GitHub. Loops.
 export const Showcase: React.FC = () => {
   const { width, height } = useVideoConfig();
 
@@ -53,21 +55,22 @@ export const Showcase: React.FC = () => {
   const k8s = { x: 680, y: 60, w: 560, h: 604 }; // Kubernetes cluster
 
   // Nodes inside GitHub
-  const repo1 = { x: 60, y: 120, w: 252, h: 150 };
-  const repo2 = { x: 328, y: 120, w: 252, h: 150 };
+  const repo1 = { x: 48, y: 120, w: 264, h: 180 };
+  const repo2 = { x: 326, y: 120, w: 264, h: 180 };
   const argocd = { x: 60, y: 474, w: 520, h: 150 };
   // Nodes inside the cluster
-  const trigger = { x: 700, y: 120, w: 520, h: 230 };
+  const trigger = { x: 700, y: 120, w: 520, h: 250 };
   const run = { x: 700, y: 474, w: 520, h: 150 };
 
   const beats: Beat[] = [
     { from: 0, text: 'Two tags land on dependency repos' },
     { from: 60, text: 'GitHub App delivers the webhooks (HMAC-verified)' },
-    { from: 100, text: 'Batched together over a tumbling window' },
-    { from: 165, text: 'Gate: never overlap an active Renovate run' },
-    { from: 220, text: 'Resolve dependents from renovate.trigger.json (deduped)' },
-    { from: 280, text: 'Clone the Renovate CronJob into a one-off Job' },
-    { from: 355, text: 'Renovate opens a PR in the Argo CD repo' },
+    { from: 100, text: 'Batched together over a 30s tumbling window' },
+    { from: 165, text: 'Window closes — gate: never overlap an active run' },
+    { from: 215, text: 'Read renovate.trigger.json from each source repo' },
+    { from: 285, text: 'Dedup the declared dependents → a single run' },
+    { from: 345, text: 'Clone the Renovate CronJob into a one-off Job' },
+    { from: 420, text: 'Renovate opens a PR in the Argo CD repo' },
   ];
 
   return (
@@ -91,7 +94,7 @@ export const Showcase: React.FC = () => {
       <GroupBox x={gh.x} y={gh.y} w={gh.w} h={gh.h} label="GitHub" />
       <GroupBox x={k8s.x} y={k8s.y} w={k8s.w} h={k8s.h} label="Kubernetes cluster" />
 
-      {/* Arrows */}
+      {/* Arrows (drawn before the boxes so opaque panels occlude any crossings) */}
       <Arrow
         id="wh1"
         x1={repo1.x + repo1.w}
@@ -123,6 +126,46 @@ export const Showcase: React.FC = () => {
         width={width}
         height={height}
       />
+
+      {/* Read renovate.trigger.json: renovate-trigger fans back into each source
+          repo. Origin sits just above the trigger's top-left so both dashed
+          lines skim above repo2 rather than cutting through it. */}
+      <Arrow
+        id="read2"
+        x1={trigger.x}
+        y1={trigger.y - 8}
+        x2={repo2.x + repo2.w / 2}
+        y2={repo2.y}
+        label="read renovate.trigger.json"
+        labelX={480}
+        labelY={96}
+        labelAnchor="middle"
+        appearAt={205}
+        flowFrom={226}
+        flowTo={266}
+        width={width}
+        height={height}
+        color={theme.accent}
+        dashed
+      />
+      <Arrow
+        id="read1"
+        x1={trigger.x}
+        y1={trigger.y - 8}
+        x2={repo1.x + repo1.w / 2}
+        y2={repo1.y}
+        label=""
+        labelX={0}
+        labelY={0}
+        appearAt={205}
+        flowFrom={214}
+        flowTo={254}
+        width={width}
+        height={height}
+        color={theme.accent}
+        dashed
+      />
+
       <Arrow
         id="clone"
         x1={trigger.x + trigger.w / 2}
@@ -133,9 +176,9 @@ export const Showcase: React.FC = () => {
         labelX={trigger.x + trigger.w / 2 + 20}
         labelY={(trigger.y + trigger.h + run.y) / 2 + 5}
         labelAnchor="start"
-        appearAt={272}
-        flowFrom={276}
-        flowTo={316}
+        appearAt={337}
+        flowFrom={341}
+        flowTo={381}
         width={width}
         height={height}
       />
@@ -149,14 +192,15 @@ export const Showcase: React.FC = () => {
         labelX={640}
         labelY={run.y + run.h / 2 - 14}
         labelAnchor="middle"
-        appearAt={348}
-        flowFrom={350}
-        flowTo={394}
+        appearAt={413}
+        flowFrom={415}
+        flowTo={459}
         width={width}
         height={height}
       />
 
-      {/* GitHub: two dependency repos + the Argo CD repo */}
+      {/* GitHub: two dependency repos + the Argo CD repo. Each source repo lights
+          up twice — on its tag, and again while its renovate.trigger.json is read. */}
       <Box
         x={repo1.x}
         y={repo1.y}
@@ -168,8 +212,11 @@ export const Showcase: React.FC = () => {
         appearAt={0}
         activeFrom={0}
         activeTo={54}
+        activeFrom2={210}
+        activeTo2={284}
       >
         <Chip label="tag: v1.4.0" appearAt={14} tone="accept" mono />
+        <Chip label="→ org/argocd-config" appearAt={224} tone="accent" mono />
       </Box>
 
       <Box
@@ -183,8 +230,11 @@ export const Showcase: React.FC = () => {
         appearAt={22}
         activeFrom={22}
         activeTo={54}
+        activeFrom2={210}
+        activeTo2={284}
       >
         <Chip label="tag: v2.1.0" appearAt={36} tone="accept" mono />
+        <Chip label="→ org/argocd-config" appearAt={238} tone="accent" mono />
       </Box>
 
       <Box
@@ -194,11 +244,11 @@ export const Showcase: React.FC = () => {
         h={argocd.h}
         title="Argo CD repo (Dependent)"
         subtitle="org/argocd-config"
-        appearAt={344}
-        activeFrom={380}
-        activeTo={460}
+        appearAt={409}
+        activeFrom={445}
+        activeTo={519}
       >
-        <Chip label="PR opened · lib-foo → v1.4.0 · lib-bar → v2.1.0" appearAt={382} tone="accept" />
+        <Chip label="PR opened · lib-foo → v1.4.0 · lib-bar → v2.1.0" appearAt={447} tone="accept" />
       </Box>
 
       {/* Cluster: renovate-trigger + the Renovate run */}
@@ -210,12 +260,13 @@ export const Showcase: React.FC = () => {
         title="renovate-trigger"
         appearAt={55}
         activeFrom={95}
-        activeTo={270}
+        activeTo={345}
       >
         <div style={{ display: 'flex', flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
           <Chip label="Batch · 2 repos · 30s window" appearAt={115} tone="accent" />
-          <Chip label="RunGate · no active run" appearAt={170} tone="accept" />
-          <Chip label="Resolve · dedup → 1 dependent" appearAt={225} tone="accent" />
+          <Chip label="RunGate · no active run" appearAt={172} tone="accept" />
+          <Chip label="Fetch · renovate.trigger.json ×2" appearAt={218} tone="accent" />
+          <Chip label="Dedup · 2 → 1 dependent" appearAt={290} tone="accept" />
         </div>
       </Box>
 
@@ -226,11 +277,11 @@ export const Showcase: React.FC = () => {
         h={run.h}
         title="Renovate run"
         subtitle="Kubernetes Job (cloned from CronJob)"
-        appearAt={285}
-        activeFrom={300}
-        activeTo={349}
+        appearAt={350}
+        activeFrom={365}
+        activeTo={414}
       >
-        <Chip label={'RENOVATE_REPOSITORIES=["org/argocd-config"]'} appearAt={302} tone="accent" mono />
+        <Chip label={'RENOVATE_REPOSITORIES=["org/argocd-config"]'} appearAt={367} tone="accent" mono />
       </Box>
 
       <Caption beats={beats} width={width} y={678} />

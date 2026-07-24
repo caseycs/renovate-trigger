@@ -13,8 +13,26 @@ export const Box: React.FC<{
   appearAt: number;
   activeFrom?: number;
   activeTo?: number;
+  // Optional second highlight window (e.g. a source repo lights up again while
+  // renovate-trigger reads its renovate.trigger.json).
+  activeFrom2?: number;
+  activeTo2?: number;
   children?: React.ReactNode;
-}> = ({ x, y, w, h, title, subtitle, titleSize = 26, appearAt, activeFrom = -1, activeTo = -1, children }) => {
+}> = ({
+  x,
+  y,
+  w,
+  h,
+  title,
+  subtitle,
+  titleSize = 26,
+  appearAt,
+  activeFrom = -1,
+  activeTo = -1,
+  activeFrom2 = -1,
+  activeTo2 = -1,
+  children,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -22,7 +40,9 @@ export const Box: React.FC<{
   const opacity = interpolate(enter, [0, 1], [0, 1]);
   const scale = interpolate(enter, [0, 1], [0.9, 1]);
 
-  const active = frame >= activeFrom && frame <= activeTo && activeFrom >= 0;
+  const active =
+    (frame >= activeFrom && frame <= activeTo && activeFrom >= 0) ||
+    (frame >= activeFrom2 && frame <= activeTo2 && activeFrom2 >= 0);
 
   return (
     <div

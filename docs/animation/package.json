@@ -5,7 +5,7 @@
   "description": "Remotion source for the renovate-trigger showcase GIF",
   "scripts": {
     "studio": "remotion studio",
-    "render": "remotion render Showcase renovate-trigger.gif --codec=gif --every-nth-frame=2 --number-of-gif-loops=0"
+    "render": "remotion render Showcase renovate-trigger.gif --codec=gif --every-nth-frame=3 --number-of-gif-loops=0"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.0",
