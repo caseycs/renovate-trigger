@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/caseycs/renovate-trigger/compare/v0.2.0...v0.2.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **chart:** pin numeric runAsUser/runAsGroup so runAsNonRoot passes ([#18](https://github.com/caseycs/renovate-trigger/issues/18)) ([7fae7f3](https://github.com/caseycs/renovate-trigger/commit/7fae7f3136c4332834a2ed75436e281db752029c))
+
 ## [0.2.0](https://github.com/caseycs/renovate-trigger/compare/v0.1.0...v0.2.0) (2026-07-18)
 
 
