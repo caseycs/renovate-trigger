@@ -27,6 +27,12 @@ decisions behind this shape.
 - Within create events, process only tag creation (`ref_type: "tag"`).
 - The tag name/version is irrelevant — any tag qualifies.
 - Ignore all other event types with HTTP 200 (not an error for GitHub).
+- GitHub delivers one `create` per tag; several tags on the same repository
+  within a window collapse into one batch entry (FR-4) and one run.
+- **Platform limit (accepted):** GitHub delivers no `create` — and no `push` —
+  event for tags when a single push creates more than three of them. Those tags
+  are invisible to the service and cannot be recovered; the scheduled CronJob is
+  the backstop (NFR-4). See [README → Limitations](./README.md#limitations).
 
 ### FR-3: Opt-in by Trigger Declaration
 - A repository opts in by keeping a `renovate.trigger.json` file at the root of

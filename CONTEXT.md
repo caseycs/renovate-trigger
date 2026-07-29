@@ -31,7 +31,9 @@ not for their contents.
 
 **Tag event**:
 A GitHub `create` event with `ref_type: "tag"`. The concrete tag name and
-version are irrelevant — any tag on an opted-in Dependency reacts.
+version are irrelevant — any tag on an opted-in Dependency reacts. One arrives
+per tag, but GitHub delivers none at all when a single push creates more than
+three tags — see [README → Limitations](./README.md#limitations).
 _Avoid_: release, push
 
 **Opt-in**:
