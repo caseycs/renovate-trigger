@@ -61,7 +61,8 @@ user-owned):
   `Create` only becomes selectable once Contents is granted.
 - **Subscribe to events → check `Create`.** This is GitHub's event for tag (and
   branch) creation; the service ignores branches and acts only on tags. There is
-  **one** App-level webhook — you never configure per-repo webhooks.
+  **one** App-level webhook — you never configure per-repo webhooks. Note the
+  three-tag delivery limit in [Limitations](#limitations).
 - **Webhook:** set **Active**, **URL** = `https://<your-host>/webhook`, and a
   strong random **Secret**.
 - **Generate a private key** and download the `.pem`.
@@ -134,6 +135,33 @@ an unreachable CronJob crash-loops the pod at boot (fail-loud by design).
 
 For each dependency repo, add a `renovate.trigger.json` on its default branch —
 see [Opting a repository in](#opting-a-repository-in) above.
+
+## Limitations
+
+### More than three tags pushed at once
+
+GitHub does not deliver tag webhooks when a single push creates **four or more**
+tags:
+
+> This event will not occur when more than three tags are created at once.
+> — [`create` event](https://docs.github.com/en/webhooks/webhook-events-and-payloads#create)
+
+The same threshold applies to the `push` event — *"Events will not be created for
+tags when more than three tags are pushed at once"* — so there is no alternative
+event to fall back on. Nothing arrives: the delivery does not even appear in the
+App's webhook deliveries UI, and the service never learns those tags exist.
+
+In practice this affects a `git push --tags` that creates several tags at once, a
+tag backfill, or monorepo release tooling that tags four or more packages in one
+run. **Three or fewer tags in one push is fine** — GitHub sends one `create` per
+tag and the batch collector dedupes them into a single Renovate run.
+
+There is no server-side workaround; the limit is enforced before delivery. When
+it happens the scheduled Renovate `CronJob` is the backstop — triggers are lossy
+by design and never retried (see
+[NFR-4](./REQUIREMENTS.md#nfr-4-reliability)) — so dependents pick up the new
+version on the next scheduled run rather than within the batch window. To keep
+the fast path, have dependency repos push tags in batches of three or fewer.
 
 ## Configuration
 
