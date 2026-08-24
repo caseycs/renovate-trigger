@@ -100,14 +100,14 @@ func newFixture(t *testing.T, f *fakeGitHub, now func() time.Time) (*Client, *ht
 	return NewClient(testClientID, testKey(t), opts...), srv
 }
 
-func TestFetchTriggerFileSuccess(t *testing.T) {
+func TestFetchDependentsSuccess(t *testing.T) {
 	f := &fakeGitHub{
 		contentsBody: encodeContent(`{"tags":["org/app-a","org/app-b"]}`),
 		tokenExpiry:  time.Now().Add(time.Hour),
 	}
 	c, _ := newFixture(t, f, nil)
 
-	deps, found, err := c.FetchTriggerFile(context.Background(), "org/lib")
+	deps, found, err := c.FetchDependents(context.Background(), "org/lib")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestAppJWTHasClientIDAndRS256(t *testing.T) {
 	fixedNow := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 	c := NewClient(testClientID, key, WithBaseURL(srv.URL), WithClock(func() time.Time { return fixedNow }))
 
-	if _, _, err := c.FetchTriggerFile(context.Background(), "org/lib"); err != nil {
+	if _, _, err := c.FetchDependents(context.Background(), "org/lib"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -164,14 +164,14 @@ func TestAppJWTHasClientIDAndRS256(t *testing.T) {
 	}
 }
 
-func TestFetchTriggerFileNotFound(t *testing.T) {
+func TestFetchDependentsNotFound(t *testing.T) {
 	f := &fakeGitHub{
 		contentsStatus: http.StatusNotFound,
 		tokenExpiry:    time.Now().Add(time.Hour),
 	}
 	c, _ := newFixture(t, f, nil)
 
-	deps, found, err := c.FetchTriggerFile(context.Background(), "org/lib")
+	deps, found, err := c.FetchDependents(context.Background(), "org/lib")
 	if err != nil {
 		t.Fatalf("404 should not be an error, got: %v", err)
 	}
@@ -183,26 +183,26 @@ func TestFetchTriggerFileNotFound(t *testing.T) {
 	}
 }
 
-func TestFetchTriggerFileServerError(t *testing.T) {
+func TestFetchDependentsServerError(t *testing.T) {
 	f := &fakeGitHub{
 		contentsStatus: http.StatusInternalServerError,
 		tokenExpiry:    time.Now().Add(time.Hour),
 	}
 	c, _ := newFixture(t, f, nil)
 
-	if _, _, err := c.FetchTriggerFile(context.Background(), "org/lib"); err == nil {
+	if _, _, err := c.FetchDependents(context.Background(), "org/lib"); err == nil {
 		t.Fatal("expected error for 500 from contents endpoint")
 	}
 }
 
-func TestFetchTriggerFileMalformedJSON(t *testing.T) {
+func TestFetchDependentsMalformedJSON(t *testing.T) {
 	f := &fakeGitHub{
 		contentsBody: encodeContent(`{"tags": not-json}`),
 		tokenExpiry:  time.Now().Add(time.Hour),
 	}
 	c, _ := newFixture(t, f, nil)
 
-	if _, _, err := c.FetchTriggerFile(context.Background(), "org/lib"); err == nil {
+	if _, _, err := c.FetchDependents(context.Background(), "org/lib"); err == nil {
 		t.Fatal("expected error for malformed trigger declaration")
 	}
 }
@@ -214,7 +214,7 @@ func TestInstallationNotFoundIsError(t *testing.T) {
 	}
 	c, _ := newFixture(t, f, nil)
 
-	if _, _, err := c.FetchTriggerFile(context.Background(), "org/lib"); err == nil {
+	if _, _, err := c.FetchDependents(context.Background(), "org/lib"); err == nil {
 		t.Fatal("expected error when the App is not installed on the repo")
 	}
 }
@@ -232,7 +232,7 @@ func TestInstallationTokenCachedAndReminted(t *testing.T) {
 
 	// First two fetches within the token's validity → one mint (cached).
 	for i := range 2 {
-		if _, _, err := c.FetchTriggerFile(context.Background(), "org/lib"); err != nil {
+		if _, _, err := c.FetchDependents(context.Background(), "org/lib"); err != nil {
 			t.Fatalf("fetch %d error: %v", i, err)
 		}
 	}
@@ -245,7 +245,7 @@ func TestInstallationTokenCachedAndReminted(t *testing.T) {
 
 	// Advance past expiry → re-mint.
 	current = base.Add(2 * time.Hour)
-	if _, _, err := c.FetchTriggerFile(context.Background(), "org/lib"); err != nil {
+	if _, _, err := c.FetchDependents(context.Background(), "org/lib"); err != nil {
 		t.Fatalf("post-expiry fetch error: %v", err)
 	}
 	f.mu.Lock()
@@ -259,8 +259,8 @@ func TestInstallationTokenCachedAndReminted(t *testing.T) {
 func TestSplitRepoInvalid(t *testing.T) {
 	c := NewClient(testClientID, testKey(t))
 	for _, bad := range []string{"noslash", "", "org/", "/repo", "org/repo/extra"} {
-		if _, _, err := c.FetchTriggerFile(context.Background(), bad); err == nil {
-			t.Errorf("FetchTriggerFile(%q) expected error", bad)
+		if _, _, err := c.FetchDependents(context.Background(), bad); err == nil {
+			t.Errorf("FetchDependents(%q) expected error", bad)
 		}
 	}
 }

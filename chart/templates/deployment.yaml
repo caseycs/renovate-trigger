@@ -59,6 +59,22 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.existingSecret.name }}
                   key: {{ .Values.existingSecret.webhookSecretKey }}
+            {{- if .Values.config.ecr.enabled }}
+            # The queue URL is the app's single enablement signal for ECR
+            # ingestion, so there is no separate RT_ECR_ENABLED to drift from it.
+            - name: RT_ECR_QUEUE_URL
+              value: {{ required "config.ecr.queueUrl is required when config.ecr.enabled is true" .Values.config.ecr.queueUrl | quote }}
+            - name: RT_AWS_REGION
+              value: {{ required "config.ecr.region is required when config.ecr.enabled is true" .Values.config.ecr.region | quote }}
+            - name: RT_ECR_DEPENDENTS_TAG
+              value: {{ .Values.config.ecr.dependentsTag | quote }}
+            # Credentials must come from the EKS Pod Identity association. Without
+            # this, a misconfigured association falls back to the node instance
+            # profile — silently running with whatever the nodes can do, instead
+            # of failing loudly at the boot-time queue check.
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            {{- end }}
           volumeMounts:
             - name: github-app-key
               mountPath: /etc/renovate-trigger

@@ -31,3 +31,12 @@ docs/animation/out/
 
 # Claude
 .claude/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log

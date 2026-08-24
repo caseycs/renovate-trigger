@@ -19,3 +19,30 @@ updates:
     open-pull-requests-limit: 10
     commit-message:
       prefix: chore
+  - package-ecosystem: terraform
+    directories:
+      - /terraform
+      - /terraform/examples/complete
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      terraform-providers:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: chore
+  # Without this the pinned tool versions in ci.yml — and every action ref —
+  # never get bumped. Dependabot's terraform ecosystem updates provider
+  # constraints, not required_version or anything inside a workflow.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: chore

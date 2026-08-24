@@ -11,7 +11,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ilia/renovate-trigger/internal/graph"
 )
+
+// gh is shorthand for a GitHub Dependency, keeping these tests focused on
+// batching rather than on Dependency construction.
+func gh(repo string) graph.Dependency {
+	return graph.Dependency{Kind: graph.KindGitHub, Name: repo}
+}
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -72,13 +80,19 @@ func (g *scriptedGate) Active(context.Context) (bool, error) {
 // stubResolver returns a fixed dependent set.
 type stubResolver struct{ deps []string }
 
-func (r stubResolver) Resolve(context.Context, []string) ([]string, error) { return r.deps, nil }
+func (r stubResolver) Resolve(context.Context, []graph.Dependency) ([]string, error) {
+	return r.deps, nil
+}
 
 // passthroughResolver resolves each source repo to itself.
 type passthroughResolver struct{}
 
-func (passthroughResolver) Resolve(_ context.Context, sources []string) ([]string, error) {
-	return sources, nil
+func (passthroughResolver) Resolve(_ context.Context, deps []graph.Dependency) ([]string, error) {
+	names := make([]string, 0, len(deps))
+	for _, d := range deps {
+		names = append(names, d.Name)
+	}
+	return names, nil
 }
 
 func newTestCollector(window time.Duration, gate RunGate, resolver Resolver, creator JobCreator) *Collector {
@@ -90,8 +104,8 @@ func TestCollectorFlushesAfterWindow(t *testing.T) {
 	c := newTestCollector(100*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
-	c.Add("org/repo-a")
-	c.Add("org/repo-b")
+	c.Add(gh("org/repo-a"))
+	c.Add(gh("org/repo-b"))
 
 	time.Sleep(250 * time.Millisecond)
 
@@ -110,9 +124,9 @@ func TestCollectorDeduplicates(t *testing.T) {
 	c := newTestCollector(100*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 	defer c.Stop()
 
-	c.Add("org/repo-a")
-	c.Add("org/repo-a")
-	c.Add("org/repo-a")
+	c.Add(gh("org/repo-a"))
+	c.Add(gh("org/repo-a"))
+	c.Add(gh("org/repo-a"))
 
 	time.Sleep(250 * time.Millisecond)
 
@@ -138,7 +152,7 @@ func TestCollectorStopCancelsTimer(t *testing.T) {
 	creator := &fakeCreator{}
 	c := newTestCollector(200*time.Millisecond, openGate{}, passthroughResolver{}, creator)
 
-	c.Add("org/repo")
+	c.Add(gh("org/repo"))
 	c.Stop()
 
 	time.Sleep(300 * time.Millisecond)
@@ -162,7 +176,7 @@ func TestCollectorConcurrentAdd(t *testing.T) {
 			if i%2 == 0 {
 				repo = "org/repo-b"
 			}
-			c.Add(repo)
+			c.Add(gh(repo))
 		}(i)
 	}
 	wg.Wait()
@@ -181,7 +195,7 @@ func TestCollectorResolvesThroughSeam(t *testing.T) {
 	c := newTestCollector(50*time.Millisecond, openGate{}, stubResolver{deps: []string{"org/dependent"}}, creator)
 	defer c.Stop()
 
-	c.Add("org/source")
+	c.Add(gh("org/source"))
 	time.Sleep(150 * time.Millisecond)
 
 	_, repos := creator.snapshot()
@@ -196,7 +210,7 @@ func TestCollectorEmptyResolutionCreatesNoJob(t *testing.T) {
 	c := newTestCollector(50*time.Millisecond, openGate{}, stubResolver{deps: nil}, creator)
 	defer c.Stop()
 
-	c.Add("org/source")
+	c.Add(gh("org/source"))
 	time.Sleep(150 * time.Millisecond)
 
 	if calls, _ := creator.snapshot(); calls != 0 {
@@ -213,15 +227,15 @@ func TestCollectorPostponesUntilGateClears(t *testing.T) {
 	c := newTestCollector(time.Hour, gate, passthroughResolver{}, creator)
 	defer c.Stop()
 
-	c.Add("org/source-a")
+	c.Add(gh("org/source-a"))
 	c.attemptFlush() // active #1 -> postpone
 	if calls, _ := creator.snapshot(); calls != 0 {
 		t.Fatal("no job expected on first (active) attempt")
 	}
 
-	c.Add("org/source-b") // accumulates during postpone
-	c.Add("org/source-a") // duplicate during postpone -> deduped
-	c.attemptFlush()      // active #2 -> postpone
+	c.Add(gh("org/source-b")) // accumulates during postpone
+	c.Add(gh("org/source-a")) // duplicate during postpone -> deduped
+	c.attemptFlush()          // active #2 -> postpone
 	if calls, _ := creator.snapshot(); calls != 0 {
 		t.Fatal("no job expected on second (active) attempt")
 	}
@@ -243,7 +257,7 @@ func TestCollectorGateErrorPostpones(t *testing.T) {
 	c := newTestCollector(time.Hour, stubGate{err: errors.New("boom")}, passthroughResolver{}, creator)
 	defer c.Stop()
 
-	c.Add("org/source")
+	c.Add(gh("org/source"))
 	c.attemptFlush()
 
 	if calls, _ := creator.snapshot(); calls != 0 {
@@ -259,7 +273,7 @@ func TestCollectorWarnsAfterRepeatedPostpones(t *testing.T) {
 	c := NewCollector(time.Hour, stubGate{active: true}, passthroughResolver{}, creator, logger)
 	defer c.Stop()
 
-	c.Add("org/source")
+	c.Add(gh("org/source"))
 	for range postponeWarnThreshold {
 		c.attemptFlush()
 	}

@@ -51,6 +51,45 @@
               "description": "Source CronJob namespace. Defaults to the release namespace."
             }
           }
+        },
+        "ecr": {
+          "type": "object",
+          "description": "Optional AWS ECR event source: an EventBridge rule delivers image-push events to an SQS queue that the pod long-polls.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Ingest ECR image-push events. Requires queueUrl and region."
+            },
+            "queueUrl": {
+              "type": "string",
+              "default": "",
+              "pattern": "^$|^https://",
+              "description": "SQS queue URL fed by the EventBridge rule (Terraform output: delivery_queue_url)."
+            },
+            "region": {
+              "type": "string",
+              "default": "",
+              "description": "AWS region for the SQS client. Required when enabled: EKS Pod Identity injects no region."
+            },
+            "dependentsTag": {
+              "type": "string",
+              "minLength": 1,
+              "default": "renovate-trigger/dependents",
+              "description": "AWS tag key on an ECR repository holding its comma-separated Dependents."
+            }
+          },
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "properties": {
+              "queueUrl": { "minLength": 1 },
+              "region": { "minLength": 1 }
+            },
+            "required": ["queueUrl", "region"]
+          }
         }
       }
     },

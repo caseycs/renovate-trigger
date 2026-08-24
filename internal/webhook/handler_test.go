@@ -11,14 +11,16 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/ilia/renovate-trigger/internal/graph"
 )
 
 type mockBatch struct {
-	added []string
+	added []graph.Dependency
 }
 
-func (m *mockBatch) Add(repo string) {
-	m.added = append(m.added, repo)
+func (m *mockBatch) Add(dep graph.Dependency) {
+	m.added = append(m.added, dep)
 }
 
 func testLogger() *slog.Logger {
@@ -55,8 +57,9 @@ func TestHandlerTagEvent(t *testing.T) {
 	if rr.Code != http.StatusAccepted {
 		t.Errorf("status = %d, want %d", rr.Code, http.StatusAccepted)
 	}
-	if len(batch.added) != 1 || batch.added[0] != "org/repo-a" {
-		t.Errorf("batch.added = %v, want [org/repo-a]", batch.added)
+	want := graph.Dependency{Kind: graph.KindGitHub, Name: "org/repo-a"}
+	if len(batch.added) != 1 || batch.added[0] != want {
+		t.Errorf("batch.added = %v, want [%v]", batch.added, want)
 	}
 }
 
@@ -84,8 +87,9 @@ func TestHandlerTagEventNoAllowlist(t *testing.T) {
 	if rr.Code != http.StatusAccepted {
 		t.Errorf("status = %d, want %d", rr.Code, http.StatusAccepted)
 	}
-	if len(batch.added) != 1 || batch.added[0] != "any-org/any-repo" {
-		t.Errorf("batch.added = %v, want [any-org/any-repo]", batch.added)
+	want := graph.Dependency{Kind: graph.KindGitHub, Name: "any-org/any-repo"}
+	if len(batch.added) != 1 || batch.added[0] != want {
+		t.Errorf("batch.added = %v, want [%v]", batch.added, want)
 	}
 }
 

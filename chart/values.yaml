@@ -17,6 +17,25 @@ config:
     # to override.
     namespace: ""
 
+  # Optional second event source: AWS ECR image pushes. An EventBridge rule on
+  # the default bus delivers "ECR Image Action" events to an SQS queue that this
+  # pod long-polls, so there is no extra ingress and no second webhook secret.
+  # An ECR repository opts in by carrying the dependentsTag below — the registry
+  # analogue of a renovate.trigger.json file.
+  #
+  # Disabled by default: a GitHub-only install renders exactly as it did before.
+  # Provision the queue, the rule, and the IAM role with the Terraform module in
+  # terraform/, then set queueUrl and region from its outputs.
+  ecr:
+    enabled: false
+    # SQS queue URL fed by the EventBridge rule. Required when enabled.
+    queueUrl: ""
+    # AWS region for the SQS client. Required when enabled: EKS Pod Identity
+    # injects credentials but no region, unlike the IRSA mutating webhook.
+    region: ""
+    # AWS tag key on an ECR repository holding its comma-separated Dependents.
+    dependentsTag: "renovate-trigger/dependents"
+
 # GitHub App credentials are read from an EXISTING Secret — the chart never
 # creates one. Provision it out of band (e.g. External Secrets Operator) with the
 # three keys below: the App client ID, the App private key (PEM), and the webhook
