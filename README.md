@@ -1,13 +1,15 @@
 # renovate-trigger
 
-Reacts to GitHub tag events and runs Renovate on the repositories that **consume**
-the newly-tagged code. When a **dependency** repo publishes a tag, the service
-reads that repo's `renovate.trigger.json` to find its **dependents**, batches them
+Reacts to publication events and runs Renovate on the repositories that
+**consume** what was published. When a **dependency** publishes — a GitHub repo
+tags a commit, or an ECR repository receives an image push — the service reads
+that dependency's trigger declaration to find its **dependents**, batches them
 over a short window, and creates a one-off Kubernetes `Job` cloned from an
 existing Renovate `CronJob` — injecting the dependents via `RENOVATE_REPOSITORIES`.
 
 A single **GitHub App** both delivers the webhooks and grants read access to the
-trigger files.
+trigger files. AWS ECR image pushes are an optional second source, delivered by an
+EventBridge rule to an SQS queue the pod long-polls.
 
 - Domain vocabulary → [`CONTEXT.md`](./CONTEXT.md)
 - Requirements & config reference → [`REQUIREMENTS.md`](./REQUIREMENTS.md)
@@ -28,14 +30,28 @@ source lives in [`docs/animation/`](./docs/animation/).
 
 ## Opting a repository in
 
-Add `renovate.trigger.json` to the **default branch** of a repository whose tags
-should trigger Renovate on its consumers:
+A dependency declares its own dependents, next to the thing being published. There
+is no central mapping to maintain.
+
+**GitHub** — add `renovate.trigger.json` to the **default branch** of a repository
+whose tags should trigger Renovate on its consumers:
 
 ```json
 { "tags": ["org/dependent-a", "org/dependent-b"] }
 ```
 
 A tag on a repo with no such file (or without the App installed) is ignored.
+
+**ECR** — tag the repository with `renovate-trigger/dependents`, comma-separated:
+
+```sh
+aws ecr tag-resource \
+  --resource-arn arn:aws:ecr:eu-west-1:123456789012:repository/api \
+  --tags Key=renovate-trigger/dependents,Value=org/dependent-a,org/dependent-b
+```
+
+An image push to a repository without that tag is ignored. AWS caps a tag value at
+256 characters, so an ECR repository can declare roughly a dozen dependents.
 
 ## Installation
 
@@ -136,6 +152,87 @@ an unreachable CronJob crash-loops the pod at boot (fail-loud by design).
 For each dependency repo, add a `renovate.trigger.json` on its default branch —
 see [Opting a repository in](#opting-a-repository-in) above.
 
+## AWS: ECR image pushes as a second event source
+
+Optional and off by default. An EventBridge rule on the default bus writes
+successful `ECR Image Action` / `PUSH` events to an SQS queue that the pod
+long-polls; at flush time the pod reads each pushed repository's
+`renovate-trigger/dependents` tag. There is no extra ingress and no second
+webhook secret.
+
+### Prerequisites
+
+- An **EKS** cluster with the **`eks-pod-identity-agent`** addon installed. The
+  Terraform module can create it (`manage_pod_identity_agent = true`), but a
+  cluster-wide addon is usually owned by whatever provisions the cluster.
+- Credentials come from the Pod Identity association only. The chart sets
+  `AWS_EC2_METADATA_DISABLED=true` when ECR is enabled, so a misconfigured
+  association crash-loops the pod instead of silently using the node role.
+
+### 1. Apply the Terraform
+
+<!-- x-release-please-start-version -->
+```hcl
+module "renovate_trigger_ecr" {
+  source = "git::https://github.com/caseycs/renovate-trigger.git//terraform?ref=v0.3.1"
+
+  cluster_name         = "platform-eu-west-1"
+  namespace            = "renovate"        # the Helm release namespace
+  service_account_name = "renovate-trigger" # must match the SA the chart renders
+
+  create_alarms        = true
+  alarm_sns_topic_arns = ["arn:aws:sns:eu-west-1:123456789012:platform-alerts"]
+}
+```
+<!-- x-release-please-end -->
+
+It creates the rule, the delivery queue and its dead-letter queue, a
+customer-managed KMS key, the IAM role, and the Pod Identity association. The key
+is not optional: EventBridge cannot deliver to a queue encrypted with an AWS owned
+key, so SQS-managed SSE is unavailable. Cost is roughly a dollar a month, nearly
+all of it the key.
+
+The association binds the role to one namespace and one ServiceAccount name, so
+renaming the release or overriding `serviceAccount.name` means re-applying it.
+
+State and backend are yours: `terraform/` is a module, not a root configuration.
+
+### 2. Point the chart at the queue
+
+```sh
+terraform output -raw helm_values > renovate-trigger.aws.values.yaml
+helm upgrade renovate-trigger oci://ghcr.io/caseycs/charts/renovate-trigger \
+  --namespace renovate \
+  -f renovate-trigger.values.yaml \
+  -f renovate-trigger.aws.values.yaml
+```
+
+Or set the values directly:
+
+```yaml
+config:
+  ecr:
+    enabled: true
+    queueUrl: "https://sqs.eu-west-1.amazonaws.com/123456789012/renovate-trigger-ecr-image-push"
+    region: "eu-west-1"
+```
+
+`region` is required when enabled — Pod Identity injects credentials but no region.
+
+### 3. Tag the ECR repositories
+
+See [Opting a repository in](#opting-a-repository-in) above. Every image push in
+the account reaches the queue by default and repositories without the tag are
+dropped after one cheap tag read; narrow the rule with
+`dependency_repository_name_prefixes` only if a high-volume CI repository is noisy.
+
+> **Note on who can opt in.** On GitHub, opting a dependency in needs write access
+> to its default branch. On ECR it needs `ecr:TagResource`, which many CI roles
+> already hold — so anyone with it can nominate arbitrary GitHub repositories as
+> dependents and have Renovate open PRs against them. Consider an SCP denying
+> `ecr:TagResource` on the `renovate-trigger/dependents` tag key to all but a
+> platform role.
+
 ## Limitations
 
 ### More than three tags pushed at once
@@ -166,6 +263,8 @@ the fast path, have dependency repos push tags in batches of three or fewer.
 ## Configuration
 
 All operational config is via `RT_*` environment variables (set by the chart);
-the dependency graph itself lives in per-repo `renovate.trigger.json` files. See
-the [configuration reference](./REQUIREMENTS.md#configuration-reference).
+the dependency graph itself lives in per-repo trigger declarations — a
+`renovate.trigger.json` file on GitHub, a `renovate-trigger/dependents` resource
+tag on ECR. See the
+[configuration reference](./REQUIREMENTS.md#configuration-reference).
 

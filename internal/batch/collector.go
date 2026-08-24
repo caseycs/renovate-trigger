@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/ilia/renovate-trigger/internal/graph"
 )
 
 // flushTimeout bounds the gate check, resolution, and job creation of a single
@@ -21,10 +23,10 @@ type RunGate interface {
 	Active(ctx context.Context) (bool, error)
 }
 
-// Resolver expands a batch of source (dependency) repos into the deduplicated
-// set of dependent repos to run Renovate on.
+// Resolver expands a batch of Dependencies into the deduplicated set of Dependents
+// to run Renovate on.
 type Resolver interface {
-	Resolve(ctx context.Context, sources []string) ([]string, error)
+	Resolve(ctx context.Context, deps []graph.Dependency) ([]string, error)
 }
 
 // JobCreator creates a single Renovate run for the given target repos.
@@ -34,7 +36,7 @@ type JobCreator interface {
 
 type Collector struct {
 	mu            sync.Mutex
-	repos         map[string]struct{}
+	deps          map[graph.Dependency]struct{}
 	timer         *time.Timer
 	postponements int
 	window        time.Duration
@@ -46,7 +48,7 @@ type Collector struct {
 
 func NewCollector(window time.Duration, gate RunGate, resolver Resolver, creator JobCreator, logger *slog.Logger) *Collector {
 	return &Collector{
-		repos:    make(map[string]struct{}),
+		deps:     make(map[graph.Dependency]struct{}),
 		window:   window,
 		gate:     gate,
 		resolver: resolver,
@@ -55,12 +57,15 @@ func NewCollector(window time.Duration, gate RunGate, resolver Resolver, creator
 	}
 }
 
-func (c *Collector) Add(repo string) {
+// Add puts a Dependency into the current Batch, starting the Window if this is the
+// first one. Dependencies dedupe on Kind and Name, so the same ECR repository
+// pushed under several tags collapses to a single entry.
+func (c *Collector) Add(dep graph.Dependency) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.repos[repo] = struct{}{}
-	c.logger.Debug("repo added to batch", "repo", repo, "batch_size", len(c.repos))
+	c.deps[dep] = struct{}{}
+	c.logger.Debug("dependency added to batch", "dependency", dep, "batch_size", len(c.deps))
 
 	if c.timer == nil {
 		c.timer = time.AfterFunc(c.window, c.attemptFlush)
@@ -76,7 +81,7 @@ func (c *Collector) attemptFlush() {
 	// a concurrent Add sees a live timer and does not arm a competing one. It is
 	// only cleared when we drain, or re-armed when we postpone.
 	c.mu.Lock()
-	if len(c.repos) == 0 {
+	if len(c.deps) == 0 {
 		c.timer = nil
 		c.postponements = 0
 		c.mu.Unlock()
@@ -107,24 +112,24 @@ func (c *Collector) attemptFlush() {
 	}
 
 	c.mu.Lock()
-	sources := make([]string, 0, len(c.repos))
-	for r := range c.repos {
-		sources = append(sources, r)
+	deps := make([]graph.Dependency, 0, len(c.deps))
+	for d := range c.deps {
+		deps = append(deps, d)
 	}
-	c.repos = make(map[string]struct{})
+	c.deps = make(map[graph.Dependency]struct{})
 	c.timer = nil
 	c.postponements = 0
 	c.mu.Unlock()
 
-	c.logger.Info("flushing batch", "sources", sources, "count", len(sources))
+	c.logger.Info("flushing batch", "dependencies", deps, "count", len(deps))
 
-	dependents, err := c.resolver.Resolve(ctx, sources)
+	dependents, err := c.resolver.Resolve(ctx, deps)
 	if err != nil {
-		c.logger.Error("failed to resolve dependents", "error", err, "sources", sources)
+		c.logger.Error("failed to resolve dependents", "error", err, "dependencies", deps)
 		return
 	}
 	if len(dependents) == 0 {
-		c.logger.Info("batch resolved to zero dependents, no job created", "sources", sources)
+		c.logger.Info("batch resolved to zero dependents, no job created", "dependencies", deps)
 		return
 	}
 

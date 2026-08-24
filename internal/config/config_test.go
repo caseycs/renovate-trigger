@@ -171,3 +171,83 @@ func TestSlogLevel(t *testing.T) {
 		}
 	}
 }
+
+// setECREnv sets the ECR variables separately rather than growing setEnv's
+// already-long positional signature.
+func setECREnv(t *testing.T, queueURL, dependentsTag, region string) {
+	t.Helper()
+	t.Setenv("RT_ECR_QUEUE_URL", queueURL)
+	t.Setenv("RT_ECR_DEPENDENTS_TAG", dependentsTag)
+	t.Setenv("RT_AWS_REGION", region)
+}
+
+// The backwards-compatibility test: an existing GitHub-only deployment sets none
+// of the ECR variables and must load with the feature off.
+func TestLoadECRDisabledByDefault(t *testing.T) {
+	key := writeTestKey(t)
+	setEnv(t, "", "info", "secret", "", "renovate", "renovate-ns", "Iv23liABC", key)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.ECREnabled() {
+		t.Error("ECREnabled() = true, want false when no queue URL is set")
+	}
+	if cfg.ECRDependentsTag != "renovate-trigger/dependents" {
+		t.Errorf("ECRDependentsTag = %q, want the default", cfg.ECRDependentsTag)
+	}
+}
+
+func TestLoadECREnabled(t *testing.T) {
+	key := writeTestKey(t)
+	setEnv(t, "", "info", "secret", "", "renovate", "renovate-ns", "Iv23liABC", key)
+	queueURL := "https://sqs.eu-west-1.amazonaws.com/123456789012/renovate-trigger-ecr-image-push"
+	setECREnv(t, queueURL, "nobi.life/dependents", "eu-west-1")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.ECREnabled() {
+		t.Error("ECREnabled() = false, want true")
+	}
+	if cfg.ECRQueueURL != queueURL {
+		t.Errorf("ECRQueueURL = %q, want %q", cfg.ECRQueueURL, queueURL)
+	}
+	if cfg.ECRDependentsTag != "nobi.life/dependents" {
+		t.Errorf("ECRDependentsTag = %q, want the override", cfg.ECRDependentsTag)
+	}
+	if cfg.AWSRegion != "eu-west-1" {
+		t.Errorf("AWSRegion = %q, want eu-west-1", cfg.AWSRegion)
+	}
+}
+
+func TestLoadRejectsNonHTTPSQueueURL(t *testing.T) {
+	key := writeTestKey(t)
+	setEnv(t, "", "info", "secret", "", "renovate", "renovate-ns", "Iv23liABC", key)
+	setECREnv(t, "sqs.eu-west-1.amazonaws.com/123456789012/queue", "", "eu-west-1")
+
+	if _, err := Load(); err == nil {
+		t.Error("expected Load() to reject a queue URL without an https:// scheme")
+	}
+}
+
+// The empty-tag guard is unreachable through the environment, since envOrDefault
+// substitutes the default for an empty value. Exercise validate directly so the
+// guard cannot silently rot.
+func TestValidateRejectsEmptyDependentsTag(t *testing.T) {
+	cfg := Config{
+		LogLevel:         "info",
+		WebhookSecret:    "secret",
+		CronJobName:      "renovate",
+		CronJobNs:        "renovate",
+		GitHubClientID:   "Iv23liABC",
+		PrivateKeyFile:   "/tmp/key.pem",
+		ECRQueueURL:      "https://sqs.eu-west-1.amazonaws.com/123456789012/q",
+		ECRDependentsTag: "",
+	}
+	if err := cfg.validate(); err == nil {
+		t.Error("expected validate() to reject an empty dependents tag when ECR is enabled")
+	}
+}

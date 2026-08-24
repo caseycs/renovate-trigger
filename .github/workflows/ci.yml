@@ -17,6 +17,53 @@ jobs:
       - name: check go.mod and Dockerfile agree
         run: ./hack/check-go-version.sh
 
+  go:
+    name: go vet & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l cmd internal)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      # -race matters here: the SQS consumer runs concurrently with the HTTP
+      # server and shares the collector with it.
+      - name: go test
+        run: go test -race ./...
+
+  terraform:
+    name: terraform fmt & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.3
+          terraform_wrapper: false
+      - name: terraform fmt
+        run: terraform fmt -check -recursive terraform
+      # -backend=false: the repo deliberately commits no backend configuration
+      # (state belongs to the operator), so init must not try to reach one. No
+      # AWS credentials are needed — fmt and validate are both static.
+      - name: terraform validate (module)
+        run: |
+          terraform -chdir=terraform init -backend=false
+          terraform -chdir=terraform validate
+      - name: terraform validate (example)
+        run: |
+          terraform -chdir=terraform/examples/complete init -backend=false
+          terraform -chdir=terraform/examples/complete validate
+
   helm:
     name: helm lint & template
     runs-on: ubuntu-latest
@@ -30,6 +77,16 @@ jobs:
           helm template renovate-trigger chart \
             --set config.cronjob.name=renovate \
             --set config.cronjob.namespace=renovate
+      # Exercises the values.schema.json if/then rule that requires a queue URL
+      # and a region once the ECR source is enabled.
+      - name: helm template (ecr enabled)
+        run: |
+          helm template renovate-trigger chart \
+            --set config.cronjob.name=renovate \
+            --set config.cronjob.namespace=renovate \
+            --set config.ecr.enabled=true \
+            --set config.ecr.queueUrl=https://sqs.eu-west-1.amazonaws.com/123456789012/q \
+            --set config.ecr.region=eu-west-1
       - name: Install helm-unittest plugin
         run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
       - name: helm unittest

@@ -2,12 +2,16 @@
 
 ## Overview
 
-A Go service that reacts to GitHub tag events and triggers Renovate runs on the
-repositories that **consume** the newly-tagged code. When a **dependency** repo
-publishes a tag, the service reads that repo's `renovate.trigger.json` to learn
-its **dependents**, batches dependents across a short window, and creates a
-one-off Kubernetes `Job` cloned from an existing Renovate `CronJob` template —
-injecting the dependents via `RENOVATE_REPOSITORIES`.
+A Go service that reacts to publication events and triggers Renovate runs on the
+repositories that **consume** what was published. When a **dependency** publishes
+— a GitHub repository tags a commit, or an ECR repository receives an image push —
+the service reads that dependency's trigger declaration to learn its
+**dependents**, batches dependents across a short window, and creates a one-off
+Kubernetes `Job` cloned from an existing Renovate `CronJob` template — injecting
+the dependents via `RENOVATE_REPOSITORIES`.
+
+ECR ingestion is optional and off unless a queue is configured; a GitHub-only
+deployment behaves exactly as before.
 
 A single **GitHub App** both delivers the webhooks and grants read access to the
 trigger files. See `CONTEXT.md` for domain vocabulary and `docs/adr/` for the
@@ -34,7 +38,7 @@ decisions behind this shape.
   are invisible to the service and cannot be recovered; the scheduled CronJob is
   the backstop (NFR-4). See [README → Limitations](./README.md#limitations).
 
-### FR-3: Opt-in by Trigger Declaration
+### FR-3: Opt-in by Trigger Declaration (GitHub)
 - A repository opts in by keeping a `renovate.trigger.json` file at the root of
   its default branch. The filename is fixed (not configurable).
 - Shape: `{"tags": ["org/dependent-a", "org/dependent-b"]}` — the list of
@@ -45,17 +49,23 @@ decisions behind this shape.
   request path.
 
 ### FR-4: Batch Collection
-- On an accepted tag event, add the **source (dependency) repository** to an
-  in-memory batch and return HTTP 202. No GitHub calls occur on the request path.
-- The batch is a deduplicated set. The window is a **tumbling** window: the timer
-  starts on the first repo added and fires once after the configured duration
-  (default 30s); repos arriving during the window join the current batch, and the
-  next repo after a flush starts a fresh window.
+- On an accepted publication event, add the **dependency** to an in-memory batch
+  and return HTTP 202 (webhook) or acknowledge the queue message (ECR). No GitHub
+  or AWS resolution calls occur on the ingestion path.
+- A batch element is a `(kind, identifier)` pair — `("github", "owner/name")` or
+  `("ecr", "<repository ARN>")` — and the batch is a deduplicated set over that
+  pair. One multi-architecture image push therefore collapses to one entry.
+- The window is a **tumbling** window: the timer starts on the first dependency
+  added and fires once after the configured duration (default 30s); dependencies
+  arriving during the window join the current batch, and the next one after a
+  flush starts a fresh window.
 
 ### FR-5: Flush & Resolution
-- When the window fires, resolve the batch: for each unique source repository,
-  discover its App installation, fetch `renovate.trigger.json` from its default
-  branch, parse it, and collect its dependents.
+- When the window fires, resolve the batch. Resolution dispatches on the
+  dependency kind: GitHub dependencies are resolved by discovering the App
+  installation and fetching `renovate.trigger.json` from the default branch; ECR
+  dependencies are resolved by reading the dependents tag off the repository via
+  `ecr:ListTagsForResource`.
 - Take the deduplicated **union** of all dependents across the batch.
 - Per-source failure degradation (each is non-fatal; one broken source never
   sinks the batch):
@@ -63,6 +73,12 @@ decisions behind this shape.
   - Fetch/installation error → drop that source; log at WARN.
   - Malformed JSON / missing `tags` key → drop that source; log at WARN.
   - Dependent entry that is not `owner/repo` → skip that entry; log at WARN.
+  - ECR: dependents tag absent, or repository deleted since the push
+    (`RepositoryNotFoundException`) → treat as opt-out; log at DEBUG.
+  - ECR: any other AWS error, notably `AccessDenied` → drop that dependency; log
+    at WARN. A denied read must never look like a global opt-out.
+  - A dependency whose kind has no registered fetcher (an ECR dependency with ECR
+    disabled) → drop it; log at WARN.
 - If the union is empty, create **no** Job; log at INFO.
 
 ### FR-6: Mutual Exclusion (no overlapping Renovate runs)
@@ -86,10 +102,50 @@ decisions behind this shape.
 - Label with `app.kubernetes.io/managed-by: renovate-trigger`.
 - Annotate with the source dependents and trigger timestamp.
 
-### FR-8: Health Probes
+### FR-8: ECR Image-Push Ingestion (optional)
+- Enabled solely by `RT_ECR_QUEUE_URL` being set. Unset means no AWS client is
+  constructed and nothing about the GitHub path changes.
+- Long-poll the delivery queue: `WaitTimeSeconds: 20` (the SQS maximum),
+  `MaxNumberOfMessages: 10`, `VisibilityTimeout: 30`.
+- Accept an event only when `source` is `aws.ecr`, `detail-type` is
+  `ECR Image Action`, `detail.action-type` is `PUSH`, and `detail.result` is
+  `SUCCESS`. The same detail-type is reused for `DELETE` and
+  `UPDATE_STORAGE_CLASS`, so the action must be checked.
+- `detail.image-tag` is **not** required: it is absent for untagged (digest-only)
+  pushes, and the concrete image tag is as irrelevant as a git tag name is.
+- Identify the dependency by the repository ARN, constructed from the event's
+  `account`, `region`, and `detail.repository-name` — `resources` is empty for this
+  detail-type. Derive the ARN partition from the region so GovCloud, China, and
+  isolated regions work.
+- Add the dependency to the batch, then **delete the message immediately**.
+  At-most-once matches NFR-4's lossy-by-design stance, and holding receipt handles
+  across a window and unbounded postpones would outlive the visibility timeout.
+- A well-formed event that is filtered out is deleted (DEBUG). A body that cannot
+  be parsed is **not** deleted, so the redrive policy surfaces it in the
+  dead-letter queue rather than the service hiding it (WARN).
+- Receive failures retry with capped exponential backoff (1s doubling to 30s)
+  indefinitely, and never terminate the process: a broken ECR path must not take
+  GitHub ingestion down with it. WARN once at 10 consecutive failures.
+
+### FR-9: Opt-in by Dependents Tag (ECR)
+- An ECR repository opts in by carrying a resource tag whose key is
+  `RT_ECR_DEPENDENTS_TAG` (default `renovate-trigger/dependents`), holding a
+  comma-separated list of dependents: `"org/app-a,org/app-b"`.
+- Whitespace around entries is trimmed and empty entries dropped; whitespace also
+  works as a separator, because AWS's cross-service guidance on allowed tag-value
+  characters does not list the comma.
+- Presence of the tag is the opt-in; absence is a normal opt-out. An empty value is
+  a declaration listing nothing.
+- There is **no** central allowlist of ECR repositories. The EventBridge rule
+  matches every image push in the account by default, and a repository without the
+  tag is dropped after one cheap tag read.
+- AWS caps a tag value at 256 characters, bounding an ECR repository to roughly a
+  dozen dependents.
+
+### FR-10: Health Probes
 - `GET /healthz` — liveness, always 200.
 - `GET /readyz` — readiness, 200 if the Kubernetes API is reachable (cached 5s).
-  Readiness does **not** depend on GitHub or on the CronJob.
+  Readiness does **not** depend on GitHub, on AWS, or on the CronJob.
 
 ## Non-Functional Requirements
 
@@ -105,9 +161,19 @@ decisions behind this shape.
 - `RT_GITHUB_CLIENT_ID` — GitHub App client ID, used as the JWT `iss` (required).
 - `RT_GITHUB_APP_PRIVATE_KEY_FILE` — path to the App private key PEM, mounted from
   a Secret (required).
+- `RT_ECR_QUEUE_URL` — SQS queue URL carrying ECR image-push events. Empty (the
+  default) disables ECR ingestion entirely; it is the single enablement signal.
+- `RT_ECR_DEPENDENTS_TAG` — AWS tag key holding an ECR repository's dependents
+  (default `renovate-trigger/dependents`).
+- `RT_AWS_REGION` — region for the AWS clients. Required in practice under EKS Pod
+  Identity, which injects credentials but no region.
 - Startup validation (fail loud at boot): all required env present; log level
   valid; private key file readable and parses as RSA; the source CronJob is
-  gettable. Any failure exits non-zero. No live GitHub token mint at boot.
+  gettable. When ECR is enabled, additionally: the queue URL is an `https://` URL,
+  a region resolves, and the queue's attributes are gettable — a wrong URL or a
+  missing IAM policy crash-loops the pod rather than leaving it deployed and
+  silently ingesting nothing. Any failure exits non-zero. No live GitHub token mint
+  at boot.
 
 ### NFR-2: Security
 - Webhook secret and App private key provided via environment / mounted Secret,
@@ -116,6 +182,20 @@ decisions behind this shape.
 - GitHub App auth: client ID in a hand-rolled RS256 JWT; installation discovered
   per-repository; installation token cached and re-minted on expiry.
 - GitHub App permission: `Contents: read` only.
+- AWS credentials via EKS Pod Identity only — never static keys. The trust policy
+  grants `sts:AssumeRole` and `sts:TagSession` to `pods.eks.amazonaws.com`, and the
+  association binds the role to one namespace and one ServiceAccount.
+- `AWS_EC2_METADATA_DISABLED=true` whenever ECR is enabled, so a misconfigured
+  association fails at the boot-time queue check instead of silently falling back
+  to the node instance profile.
+- AWS least privilege: `sqs:ReceiveMessage`, `sqs:DeleteMessage` and
+  `sqs:GetQueueAttributes` on the one delivery queue; `ecr:ListTagsForResource`
+  scoped to ECR repositories in the account and region; `kms:Decrypt` on the queue
+  key, restricted by `kms:ViaService` to SQS. Deliberately not granted:
+  `sqs:GetQueueUrl` (the URL is supplied, never discovered) and
+  `sqs:ChangeMessageVisibility` (handling is parse-then-add, so no lease needs
+  extending).
+- ECR ingestion adds no inbound network path — the pod polls outward.
 - In-cluster K8s auth only (ServiceAccount).
 - RBAC least privilege in the CronJob namespace: `get` cronjobs, `create` and
   `list` jobs.
@@ -124,9 +204,12 @@ decisions behind this shape.
 
 ### NFR-3: Observability
 - Structured JSON logging via `log/slog`, configurable level.
-- DEBUG: ignored events, opt-out (no trigger file). INFO: job created,
-  startup/shutdown, batch flush, empty-union no-op. WARN: invalid signatures,
-  per-source resolution failures, postponed-too-long. ERROR: K8s failures.
+- DEBUG: ignored events (webhook and ECR), opt-out (no trigger declaration).
+  INFO: job created, startup/shutdown, batch flush, empty-union no-op, accepted
+  image push, consumer start/stop. WARN: invalid signatures, per-dependency
+  resolution failures, postponed-too-long, unparseable queue message, failed
+  message delete, repeated receive failures, unregistered dependency kind.
+  ERROR: K8s failures.
 - No sensitive data in logs (no secrets, no private key, no raw signatures).
 
 ### NFR-4: Reliability
@@ -135,8 +218,12 @@ decisions behind this shape.
 - Lossy by design: pending batches are not persisted and triggers are not
   retried — dropped on shutdown, crash, or failed flush. The source CronJob
   schedule is the backstop. See ADR-0002.
+- The delivery queue is transport, not durability: it survives a rollout, not an
+  outage. Messages are deleted as soon as the dependency joins the batch and
+  retention defaults to one hour. See ADR-0005.
 - Graceful shutdown on SIGINT/SIGTERM. HTTP timeouts: read 10s, write 10s,
-  idle 60s.
+  idle 60s. The ECR consumer observes the same signal context and shutdown waits
+  for it, bounded by the same 10s budget.
 - Thread-safe batch collector using `sync.Mutex`.
 
 ### NFR-5: Deployment
@@ -145,8 +232,14 @@ decisions behind this shape.
   credentials (client ID, private key, webhook secret) are read from a single
   existing Secret provisioned out of band (e.g. External Secrets Operator), with
   configurable key names.
-- Multi-stage Docker build: `golang:1.25-alpine` builder,
-  `distroless/static-debian12:nonroot` runtime.
+- Optional AWS infrastructure as a Terraform module under `terraform/`: an
+  EventBridge rule on the default bus, the delivery queue and its dead-letter
+  queue, a customer-managed KMS key (EventBridge cannot deliver to a queue
+  encrypted with an AWS owned key), and the IAM role plus Pod Identity
+  association. It ships no backend and no state — operators consume it.
+- Multi-stage Docker build: `golang:1.26.5-alpine` builder,
+  `distroless/static-debian12:nonroot` runtime. The distroless base ships CA roots,
+  so TLS to `sqs.*` and `api.ecr.*` needs nothing extra.
 - Multi-arch image (`linux/amd64`, `linux/arm64` via `docker buildx`): the
   builder stage runs on the native `$BUILDPLATFORM` (no QEMU emulation) and
   cross-compiles to `$TARGETOS`/`$TARGETARCH`.
@@ -157,8 +250,11 @@ decisions behind this shape.
 - 80%+ test coverage on internal packages. No test hits the network or sleeps on
   a real timer; all external I/O (GitHub, Kubernetes) is faked.
 - **Seams:** the collector orchestrates three injected interfaces — `RunGate`
-  (mutual-exclusion check over K8s), `Resolver` (source repos → deduped
-  dependents over GitHub), and `JobCreator` — each faked in isolation.
+  (mutual-exclusion check over K8s), `Resolver` (dependencies → deduped
+  dependents), and `JobCreator` — each faked in isolation. The resolver holds one
+  `DependentsFetcher` per dependency kind; ingestion has one seam per source
+  (`webhook.BatchAdder`, `awsecr.DependencyAdder`). SQS and the ECR API are faked
+  with hand-written stubs in the same style as the GitHub `httptest` fixture.
 - **Timing:** the gated-drain decision is a directly-callable method
   (`attemptFlush`) tested by scripting the `RunGate` (`active → active → clear`);
   the `time.AfterFunc` trigger stays a trivial, untested wire.
@@ -186,6 +282,9 @@ decisions behind this shape.
 | `RT_CRONJOB_NAMESPACE` | Yes | — | Source CronJob namespace |
 | `RT_GITHUB_CLIENT_ID` | Yes | — | GitHub App client ID (JWT issuer) |
 | `RT_GITHUB_APP_PRIVATE_KEY_FILE` | Yes | — | Path to the App private key PEM |
+| `RT_ECR_QUEUE_URL` | No | — | SQS queue URL for ECR image-push events; empty disables ECR ingestion |
+| `RT_ECR_DEPENDENTS_TAG` | No | `renovate-trigger/dependents` | AWS tag key holding an ECR repository's dependents |
+| `RT_AWS_REGION` | No | — | Region for the AWS clients; required in practice under EKS Pod Identity |
 
 ## Dependencies
 
@@ -194,7 +293,9 @@ decisions behind this shape.
 | `k8s.io/client-go` | Kubernetes API client |
 | `k8s.io/api` | Kubernetes types (Job, CronJob) |
 | `k8s.io/apimachinery` | Kubernetes meta types |
-| `google/go-github` | GitHub REST client (contents, installations) |
 | `golang-jwt/jwt` | Hand-rolled RS256 App JWT |
+| `aws-sdk-go-v2/config` | AWS credential and region resolution (Pod Identity) |
+| `aws-sdk-go-v2/service/sqs` | Delivery queue receive/delete/attributes |
+| `aws-sdk-go-v2/service/ecr` | `ListTagsForResource` for the dependents tag |
 | `log/slog` (stdlib) | Structured JSON logging |
 | `crypto/hmac` (stdlib) | Webhook signature validation |

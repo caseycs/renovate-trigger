@@ -152,3 +152,69 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].securityContext.capabilities.drop
           content: ALL
+
+  # The chart-level backwards-compatibility guard: a GitHub-only install must not
+  # gain any AWS env, so an existing deployment is byte-identical after upgrade.
+  - it: sets no ECR or AWS env by default
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: RT_ECR_QUEUE_URL
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: RT_AWS_REGION
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: RT_ECR_DEPENDENTS_TAG
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: AWS_EC2_METADATA_DISABLED
+
+  - it: wires the ECR event source into the container env when enabled
+    set:
+      config.ecr.enabled: true
+      config.ecr.queueUrl: https://sqs.eu-west-1.amazonaws.com/123456789012/renovate-trigger-ecr-image-push
+      config.ecr.region: eu-west-1
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RT_ECR_QUEUE_URL
+            value: https://sqs.eu-west-1.amazonaws.com/123456789012/renovate-trigger-ecr-image-push
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RT_AWS_REGION
+            value: eu-west-1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RT_ECR_DEPENDENTS_TAG
+            value: renovate-trigger/dependents
+      # Pod Identity or nothing: never the node instance profile.
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AWS_EC2_METADATA_DISABLED
+            value: "true"
+
+  - it: honours a custom dependents tag key
+    set:
+      config.ecr.enabled: true
+      config.ecr.queueUrl: https://sqs.eu-west-1.amazonaws.com/123456789012/q
+      config.ecr.region: eu-west-1
+      config.ecr.dependentsTag: nobi.life/dependents
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RT_ECR_DEPENDENTS_TAG
+            value: nobi.life/dependents

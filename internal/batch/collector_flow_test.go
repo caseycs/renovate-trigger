@@ -17,7 +17,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
+
+	"github.com/ilia/renovate-trigger/internal/awsecr"
 	"github.com/ilia/renovate-trigger/internal/ghapp"
+	"github.com/ilia/renovate-trigger/internal/graph"
 	"github.com/ilia/renovate-trigger/internal/k8s"
 	"github.com/ilia/renovate-trigger/internal/resolve"
 	"github.com/ilia/renovate-trigger/internal/webhook"
@@ -148,7 +154,9 @@ func renovateRepos(t *testing.T, job batchv1.Job) []string {
 func newFlowCollector(t *testing.T, kube *fake.Clientset, gh *httptest.Server) *Collector {
 	t.Helper()
 	ghClient := ghapp.NewClient("Iv23liTEST", flowTestKey(t), ghapp.WithBaseURL(gh.URL))
-	resolver := resolve.New(ghClient, testLogger())
+	resolver := resolve.New(map[graph.Kind]resolve.DependentsFetcher{
+		graph.KindGitHub: ghClient,
+	}, testLogger())
 	jc := k8s.NewJobCreator(kube, "renovate", "renovate", testLogger())
 	// A long window means the timer never fires during the test; we drive the
 	// flush ourselves via attemptFlush.
@@ -196,4 +204,124 @@ func TestFlushNoDependentsCreatesNoRun(t *testing.T) {
 	if jobs := listJobs(t, kube, "renovate"); len(jobs) != 0 {
 		t.Errorf("expected no job for empty resolution, got %d", len(jobs))
 	}
+}
+
+// flowTagLister is a stand-in for the ECR API in the cross-kind flow test. It
+// satisfies the unexported interface awsecr.NewTagReader accepts, which an
+// external package can still pass a value for even though it cannot name it.
+type flowTagLister struct {
+	dependents string
+}
+
+func (f flowTagLister) ListTagsForResource(_ context.Context, _ *ecr.ListTagsForResourceInput,
+	_ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
+	return &ecr.ListTagsForResourceOutput{Tags: []ecrtypes.Tag{
+		{Key: aws.String("renovate-trigger/dependents"), Value: aws.String(f.dependents)},
+	}}, nil
+}
+
+const flowECRDependency = "arn:aws:ecr:us-west-2:123456789012:repository/base-image"
+
+// TestFlushMergesGitHubAndECRDependents is the cross-kind counterpart of the test
+// above: a GitHub tag event and an ECR image push land in the same Batch and
+// resolve through different fetchers into one Renovate run. org/shared is declared
+// by both, proving the union deduplicates across Dependency kinds.
+func TestFlushMergesGitHubAndECRDependents(t *testing.T) {
+	gh := fakeGitHub(t, `{"tags":["org/app-1","org/shared"]}`, http.StatusOK)
+	kube := fake.NewSimpleClientset()
+	flowCronJob(t, kube, "renovate", "renovate")
+
+	ghClient := ghapp.NewClient("Iv23liTEST", flowTestKey(t), ghapp.WithBaseURL(gh.URL))
+	tagReader := awsecr.NewTagReader(
+		flowTagLister{dependents: "org/shared,org/app-2"},
+		"renovate-trigger/dependents",
+	)
+	resolver := resolve.New(map[graph.Kind]resolve.DependentsFetcher{
+		graph.KindGitHub: ghClient,
+		graph.KindECR:    tagReader,
+	}, testLogger())
+	jc := k8s.NewJobCreator(kube, "renovate", "renovate", testLogger())
+	c := NewCollector(time.Hour, openGate{}, resolver, jc, testLogger())
+	defer c.Stop()
+
+	secret := "webhook-secret"
+	h := webhook.NewHandler(secret, c, testLogger())
+
+	postTag(t, h, secret, "org/lib", "v1.0.0")
+	c.Add(graph.Dependency{Kind: graph.KindECR, Name: flowECRDependency})
+	c.attemptFlush()
+
+	jobs := listJobs(t, kube, "renovate")
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+	got := renovateRepos(t, jobs[0])
+	want := []string{"org/app-1", "org/app-2", "org/shared"}
+	if len(got) != len(want) {
+		t.Fatalf("RENOVATE_REPOSITORIES = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("RENOVATE_REPOSITORIES = %v, want %v", got, want)
+		}
+	}
+}
+
+// The ECR-disabled deployment: an ECR Dependency in the Batch with no ECR fetcher
+// registered is dropped, and the GitHub half of the Batch still produces a run.
+func TestFlushDropsECRDependencyWhenECRDisabled(t *testing.T) {
+	gh := fakeGitHub(t, `{"tags":["org/app-1"]}`, http.StatusOK)
+	kube := fake.NewSimpleClientset()
+	flowCronJob(t, kube, "renovate", "renovate")
+
+	c := newFlowCollector(t, kube, gh)
+	defer c.Stop()
+
+	secret := "webhook-secret"
+	h := webhook.NewHandler(secret, c, testLogger())
+
+	postTag(t, h, secret, "org/lib", "v1.0.0")
+	c.Add(graph.Dependency{Kind: graph.KindECR, Name: flowECRDependency})
+	c.attemptFlush()
+
+	jobs := listJobs(t, kube, "renovate")
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+	got := renovateRepos(t, jobs[0])
+	if len(got) != 1 || got[0] != "org/app-1" {
+		t.Errorf("RENOVATE_REPOSITORIES = %v, want [org/app-1]", got)
+	}
+}
+
+// A multi-tag push is several SQS events naming one repository. They collapse to a
+// single Batch entry, so resolution reads the Dependents tag once.
+func TestBatchDedupsMultiTagECRPush(t *testing.T) {
+	kube := fake.NewSimpleClientset()
+	flowCronJob(t, kube, "renovate", "renovate")
+
+	counting := &countingResolver{}
+	jc := k8s.NewJobCreator(kube, "renovate", "renovate", testLogger())
+	c := NewCollector(time.Hour, openGate{}, counting, jc, testLogger())
+	defer c.Stop()
+
+	dep := graph.Dependency{Kind: graph.KindECR, Name: flowECRDependency}
+	c.Add(dep) // pushed as :v1.2.3
+	c.Add(dep) // the same push, tagged :latest
+	c.Add(dep) // an untagged child manifest of the same push
+	c.attemptFlush()
+
+	if counting.count != 1 {
+		t.Errorf("resolver saw %d dependencies, want 1", counting.count)
+	}
+}
+
+// countingResolver records how many Dependencies a flush passed to resolution.
+type countingResolver struct {
+	count int
+}
+
+func (r *countingResolver) Resolve(_ context.Context, deps []graph.Dependency) ([]string, error) {
+	r.count = len(deps)
+	return []string{"org/app-1"}, nil
 }

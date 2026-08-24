@@ -5,7 +5,8 @@
       "release-type": "simple",
       "extra-files": [
         "chart/Chart.yaml",
-        { "type": "generic", "path": "README.md" }
+        { "type": "generic", "path": "README.md" },
+        { "type": "generic", "path": "terraform/README.md" }
       ],
       "changelog-sections": [
         { "type": "feat", "section": "Features" },

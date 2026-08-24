@@ -5,10 +5,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+
+	"github.com/ilia/renovate-trigger/internal/graph"
 )
 
 type BatchAdder interface {
-	Add(repo string)
+	Add(dep graph.Dependency)
 }
 
 type Handler struct {
@@ -66,10 +68,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The opt-in gate (App installed + trigger declaration present) is resolved
-	// at flush time, not here. Any signed tag event batches its source repo.
+	// at flush time, not here. Any signed tag event batches its Dependency.
 	repo := payload.Repository.FullName
 	h.logger.Info("tag event accepted", "repo", repo, "tag", payload.Ref)
-	h.batch.Add(repo)
+	h.batch.Add(graph.Dependency{Kind: graph.KindGitHub, Name: repo})
 
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted", "repo": repo, "tag": payload.Ref})
 }

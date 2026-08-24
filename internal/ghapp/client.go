@@ -74,11 +74,11 @@ func NewClient(clientID string, key *rsa.PrivateKey, opts ...Option) *Client {
 	return c
 }
 
-// FetchTriggerFile reads repo's ("owner/name") renovate.trigger.json from its
+// FetchDependents reads repo's ("owner/name") renovate.trigger.json from its
 // default branch and returns the declared dependents. found is false when the
 // repository has no trigger declaration (HTTP 404); any other failure is an
 // error.
-func (c *Client) FetchTriggerFile(ctx context.Context, repo string) (deps []string, found bool, err error) {
+func (c *Client) FetchDependents(ctx context.Context, repo string) (deps []string, found bool, err error) {
 	owner, name, err := splitRepo(repo)
 	if err != nil {
 		return nil, false, err
