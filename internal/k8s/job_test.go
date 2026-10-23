@@ -205,6 +205,48 @@ func TestCreateJobForReposOverridesAutodiscover(t *testing.T) {
 	}
 }
 
+func TestCreateJobForReposDefaultsTTL(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	if err := createFakeCronJob(client, "renovate", "renovate"); err != nil {
+		t.Fatal(err)
+	}
+
+	jc := NewJobCreator(client, "renovate", "renovate", testLogger())
+	if _, err := jc.CreateJobForRepos(context.Background(), []string{"org/repo"}); err != nil {
+		t.Fatalf("CreateJobForRepos error: %v", err)
+	}
+
+	jobs, _ := client.BatchV1().Jobs("renovate").List(context.Background(), metav1.ListOptions{})
+	ttl := jobs.Items[0].Spec.TTLSecondsAfterFinished
+	if ttl == nil || *ttl != 7200 {
+		t.Errorf("TTLSecondsAfterFinished = %v, want 7200", ttl)
+	}
+}
+
+func TestCreateJobForReposKeepsTemplateTTL(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	if err := createFakeCronJob(client, "renovate", "renovate"); err != nil {
+		t.Fatal(err)
+	}
+	cronJob, _ := client.BatchV1().CronJobs("renovate").Get(context.Background(), "renovate", metav1.GetOptions{})
+	templateTTL := int32(600)
+	cronJob.Spec.JobTemplate.Spec.TTLSecondsAfterFinished = &templateTTL
+	if _, err := client.BatchV1().CronJobs("renovate").Update(context.Background(), cronJob, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	jc := NewJobCreator(client, "renovate", "renovate", testLogger())
+	if _, err := jc.CreateJobForRepos(context.Background(), []string{"org/repo"}); err != nil {
+		t.Fatalf("CreateJobForRepos error: %v", err)
+	}
+
+	jobs, _ := client.BatchV1().Jobs("renovate").List(context.Background(), metav1.ListOptions{})
+	ttl := jobs.Items[0].Spec.TTLSecondsAfterFinished
+	if ttl == nil || *ttl != 600 {
+		t.Errorf("TTLSecondsAfterFinished = %v, want 600", ttl)
+	}
+}
+
 func TestCreateJobForReposCronJobNotFound(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	jc := NewJobCreator(client, "nonexistent", "renovate", testLogger())
