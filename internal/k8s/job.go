@@ -19,6 +19,11 @@ const (
 	// tell our runs apart from unrelated Jobs.
 	managedByLabel = "app.kubernetes.io/managed-by"
 	managedByValue = "renovate-trigger"
+
+	// defaultJobTTL is applied when the CronJob template sets no
+	// ttlSecondsAfterFinished: our Jobs have no CronJob owner, so its history
+	// limits never clean them up.
+	defaultJobTTL int32 = 2 * 60 * 60
 )
 
 type JobCreator struct {
@@ -55,6 +60,10 @@ func (jc *JobCreator) CreateJobForRepos(ctx context.Context, repos []string) (st
 	}
 
 	jobSpec := cronJob.Spec.JobTemplate.Spec.DeepCopy()
+	if jobSpec.TTLSecondsAfterFinished == nil {
+		ttl := defaultJobTTL
+		jobSpec.TTLSecondsAfterFinished = &ttl
+	}
 
 	repoJSON, err := json.Marshal(repos)
 	if err != nil {
