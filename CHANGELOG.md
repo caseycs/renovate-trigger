@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/caseycs/renovate-trigger/compare/v0.3.1...v0.4.0) (2026-10-23)
+
+
+### Features
+
+* default triggered Jobs to a 2h ttlSecondsAfterFinished ([#39](https://github.com/caseycs/renovate-trigger/issues/39)) ([7689cfc](https://github.com/caseycs/renovate-trigger/commit/7689cfca6930bae5da446f2693fe6733dae1f717))
+
+
+### Miscellaneous Chores
+
+* bump golang from 1.26.5-alpine to 1.27.2-alpine ([#37](https://github.com/caseycs/renovate-trigger/issues/37)) ([9bf2fff](https://github.com/caseycs/renovate-trigger/commit/9bf2fffa27db0cd594a0ed56eb2a7c7f6fd1cd40))
+* bump the go-dependencies group across 1 directory with 2 updates ([#36](https://github.com/caseycs/renovate-trigger/issues/36)) ([41dfe8b](https://github.com/caseycs/renovate-trigger/commit/41dfe8b313864649a8aa338c4fcc8c237b0f8562))
+
 ## [0.3.1](https://github.com/caseycs/renovate-trigger/compare/v0.3.0...v0.3.1) (2026-07-24)
 
 
