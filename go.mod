@@ -4,9 +4,9 @@ go 1.27.2
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	k8s.io/api v0.37.0
-	k8s.io/apimachinery v0.37.0
-	k8s.io/client-go v0.37.0
+	k8s.io/api v0.37.1
+	k8s.io/apimachinery v0.37.1
+	k8s.io/client-go v0.37.1
 )
 
 require (
